@@ -124,7 +124,14 @@ async function genTip(trends: Article[], tweets: Tweet[], client: Anthropic): Pr
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
-export async function POST() {
+export async function POST(req: Request) {
+  // Guard: reject requests that don't carry the dashboard token.
+  // Set NEXT_PUBLIC_GUARD_TOKEN in Vercel env vars (any random string, e.g. a UUID).
+  const guardToken = process.env.NEXT_PUBLIC_GUARD_TOKEN;
+  if (guardToken && req.headers.get('x-guard-token') !== guardToken) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return Response.json({ error: 'ANTHROPIC_API_KEY not set. Add it in Vercel Dashboard → Settings → Environment Variables, then Redeploy.' }, { status: 400 });

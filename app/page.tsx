@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+// Guard token is set via NEXT_PUBLIC_GUARD_TOKEN env var on Vercel.
+// It's bundled into the client JS (so not a "secret"), but it raises the bar
+// for anyone trying to abuse the /api/generate endpoint.
+const GUARD_TOKEN = process.env.NEXT_PUBLIC_GUARD_TOKEN ?? '';
+const AUTH_HEADERS = GUARD_TOKEN ? { 'x-guard-token': GUARD_TOKEN } : {};
+
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend  { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
 interface Tweet  { format: string; potential: string; text: string; char_count: number; reasoning: string; }
@@ -49,7 +55,6 @@ export default function Page() {
   const [stageMsg,   setStageMsg]   = useState('');
   const [stageSub,   setStageSub]   = useState('');
   const [apiKeySet,  setApiKeySet]  = useState(false);
-  const [preview,    setPreview]    = useState('');
   const [toasts,     setToasts]     = useState<Toast[]>([]);
   const [saved,      setSaved]      = useState<Set<number>>(new Set());
   const [skipped,    setSkipped]    = useState<Set<number>>(new Set());
@@ -75,9 +80,8 @@ export default function Page() {
   const fetchStatus = useCallback(async () => {
     try {
       const r = await fetch('/api/status');
-      const s = await r.json() as { api_key_set: boolean; api_key_preview: string };
+      const s = await r.json() as { api_key_set: boolean };
       setApiKeySet(s.api_key_set);
-      setPreview(s.api_key_preview ?? '');
     } catch {}
   }, []);
 
@@ -88,7 +92,7 @@ export default function Page() {
     setSaved(new Set()); setSkipped(new Set());
 
     try {
-      const res = await fetch('/api/generate', { method: 'POST' });
+      const res = await fetch('/api/generate', { method: 'POST', headers: AUTH_HEADERS });
       if (!res.ok) { const e = await res.json() as { error: string }; throw new Error(e.error); }
 
       const reader = res.body!.getReader();
@@ -323,7 +327,7 @@ export default function Page() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', background: apiKeySet ? 'rgba(34,197,94,.08)' : 'rgba(239,68,68,.08)', border: `1px solid ${apiKeySet ? 'rgba(34,197,94,.2)' : 'rgba(239,68,68,.2)'}`, borderRadius: 9, marginBottom: 14 }}>
                   <div className={`status-dot ${apiKeySet ? 'on' : 'off'}`} style={{ width: 9, height: 9 }} />
                   <span style={{ fontSize: 13, fontWeight: 500, color: apiKeySet ? '#4ade80' : '#f87171' }}>
-                    {apiKeySet ? `Connected — ${preview}` : 'Not set'}
+                    {apiKeySet ? 'Connected ✓' : 'Not set'}
                   </span>
                 </div>
                 {!apiKeySet && (
