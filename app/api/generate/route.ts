@@ -14,8 +14,11 @@ interface Article {
 }
 
 interface Tweet {
+  type: 'influencer_voice' | 'news_hook';
   format: string;
-  potential: 'HIGH' | 'MEDIUM' | 'LOW';
+  reply_potential: 'HIGH' | 'MEDIUM' | 'LOW';
+  best_time: string;
+  reply_strategy: string;
   text: string;
   char_count: number;
   reasoning: string;
@@ -87,14 +90,30 @@ async function getTrends(): Promise<Article[]> {
 }
 
 // ── Claude ────────────────────────────────────────────────────────────────
-const SYSTEM = `You are a Twitter content strategist for @UxGsol (crypto/DeFi/tech, 88K followers).
-VOICE: Direct, informative, slightly edgy. Real and genuinely interesting. NOT clickbait.
-FORMATS:
-1. "Crazy Story" — Hook: [shocking headline]\nBody: who+what → how → surprising result/twist
-2. "Hidden Info"  — Hook: [little-known fact]\nBody: bullet timeline\nEnd: why it matters
-3. "Unpopular Truth" — Hook: Not sure who needs to hear this, but [bold opinion]\nBody: why + evidence
-4. "Data Reveal" — Hook: [surprising stat]\nBody: context (add "(visual recommended)")
-RULES: English only. Max 280 chars each. No fake data. First line = hook = irresistible.`;
+const SYSTEM = `You are a Twitter growth strategist for @UxGsol (crypto/DeFi/tech, 88K followers).
+
+2026 X ALGORITHM RULES (non-negotiable):
+- A reply weighs 150× more than a like — every tweet must be engineered to trigger replies
+- The first 30 MINUTES after posting determine viral reach; the reply strategy is as important as the tweet itself
+- NEVER include external links — links kill distribution completely
+- Text-only tweets outperform all other formats
+- Engagement bait ("RT to save", "comment below") is algorithmically detected and penalized
+- Dwell time matters: write tweets people stop scrolling to read fully
+
+VOICE: Direct, informative, slightly edgy. Sounds like a real CT person, not a brand account.
+
+TWEET TYPES:
+1. "Influencer Voice" (2 of the 5): Casual first-person CT voice. Shares a genuine insight, hot take, or observation. MUST end with a real question or a controversial-but-defensible statement that makes people want to reply and share their opinion. No fake hype. Real signal only.
+
+2. "News Hook" (3 of the 5): Crazy Story format. Shocking TRUE headline as the very first line. Body: who → what → surprising twist or result. No links ever. The tweet ends naturally — readers should reply asking for more or sharing their own take.
+
+STRICT RULES:
+- English only
+- Max 280 characters per tweet — no exceptions
+- Zero fabricated data, statistics, or events
+- First line must be irresistible — it determines whether anyone reads further
+- No thread callouts — single tweets only
+- No explicit calls-to-action or engagement bait phrases`;
 
 async function genTweets(trends: Article[], client: Anthropic): Promise<Tweet[]> {
   const trendsText = trends.slice(0, 10)
@@ -103,9 +122,9 @@ async function genTweets(trends: Article[], client: Anthropic): Promise<Tweet[]>
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 2500,
     system: SYSTEM,
-    messages: [{ role: 'user', content: `Today's trending topics:\n\n${trendsText}\n\nGenerate 5 tweet drafts (2× Crazy Story, 1× Hidden Info, 1× Unpopular Truth, 1× Data Reveal).\nReturn ONLY valid JSON array, no markdown:\n[{"format":"Crazy Story","potential":"HIGH","text":"...","char_count":0,"reasoning":"..."}]` }],
+    messages: [{ role: 'user', content: `Today's trending crypto topics:\n\n${trendsText}\n\nGenerate exactly 5 tweets using today's news:\n- 2× "Influencer Voice" (ends with genuine question or bold hot take)\n- 3× "News Hook" (shocking first line, Crazy Story structure, no links)\n\nReturn ONLY a valid JSON array, no markdown or explanation:\n[{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a follow-up data point that deepens the debate","text":"...","char_count":0,"reasoning":"..."}]` }],
   });
 
   let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
@@ -118,7 +137,7 @@ async function genTip(trends: Article[], tweets: Tweet[], client: Anthropic): Pr
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 180,
-    messages: [{ role: 'user', content: `Write a 1-paragraph strategy tip (max 75 words) for @UxGsol (88K crypto Twitter followers).\nTop trend: ${trends[0]?.title ?? 'crypto'}\nBest format: ${tweets[0]?.format ?? 'Crazy Story'}\nInclude: best time to post (UTC), which draft to prioritize, one engagement tactic. Be specific.` }],
+    messages: [{ role: 'user', content: `Write a 1-paragraph strategy tip (max 75 words) for @UxGsol (88K crypto Twitter followers).\nTop trend: ${trends[0]?.title ?? 'crypto'}\nBest tweet type: ${tweets[0]?.format ?? 'Influencer Voice'}\nBest post time: ${tweets[0]?.best_time ?? '14:00 UTC'}\nInclude: which draft to post first, exactly when (UTC), and one specific reply-window tactic for the first 30 minutes. Be precise and actionable.` }],
   });
   return (msg.content[0] as { type: 'text'; text: string }).text.trim();
 }
@@ -150,7 +169,7 @@ export async function POST(req: Request) {
         const safeTrends = trends.length ? trends : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
         send({ type: 'trends', data: safeTrends });
 
-        send({ type: 'progress', stage: 2, message: '🤖 Generating tweet drafts with Claude AI...', sub: 'Writing 5 drafts in @UxGsol style...' });
+        send({ type: 'progress', stage: 2, message: '🤖 Generating tweet drafts with Claude AI...', sub: '2× Influencer Voice · 3× News Hook · 2026 algorithm rules...' });
         const tweets = await genTweets(safeTrends, client);
         send({ type: 'tweets', data: tweets });
 

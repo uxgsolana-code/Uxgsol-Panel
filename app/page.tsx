@@ -10,7 +10,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend  { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet  { format: string; potential: string; text: string; char_count: number; reasoning: string; }
+interface Tweet  { type: 'influencer_voice' | 'news_hook'; format: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
 interface Report { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface Toast  { id: number; type: 'success' | 'error' | 'info'; message: string; }
 
@@ -29,6 +29,8 @@ function saveReport(r: Report) {
 // ── Badge helpers ─────────────────────────────────────────────────────────────
 function fmtBadge(f: string) {
   const s = f.toLowerCase();
+  if (s.includes('influencer')) return 'badge b-truth';
+  if (s.includes('news') || s.includes('hook')) return 'badge b-crazy';
   if (s.includes('crazy'))  return 'badge b-crazy';
   if (s.includes('hidden') || s.includes('timeline')) return 'badge b-hidden';
   if (s.includes('truth') || s.includes('unpopular')) return 'badge b-truth';
@@ -226,7 +228,7 @@ export default function Page() {
                 <div className="empty-state">
                   <div className="empty-icon">📡</div>
                   <div className="empty-title">No Report Generated Yet</div>
-                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 5 high-engagement tweet drafts.</div>
+                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 5 high-engagement tweet drafts — 2 Influencer Voice + 3 News Hook — optimised for the 2026 X algorithm.</div>
                   <button className="btn-primary" onClick={generateReport}>
                     <span>⚡</span> Generate Today&apos;s Report
                   </button>
@@ -274,13 +276,23 @@ export default function Page() {
                       <div key={i} id={`tw-${i}`} className={`tweet-card slide-in${skipped.has(i) ? ' skipped' : ''}`} style={{ animationDelay: `${i * 0.07}s` }}>
                         <div className="tweet-header">
                           <span className={fmtBadge(tw.format)}>{tw.format}</span>
-                          <span className={potBadge(tw.potential)} style={{ fontSize: 9 }}>{potLabel(tw.potential)}</span>
+                          <span className={potBadge(tw.reply_potential)} style={{ fontSize: 9 }}>{potLabel(tw.reply_potential)}</span>
                           <span className="tweet-char">{tw.char_count}/280</span>
                         </div>
                         <div className="tweet-body">{tw.text}</div>
                         <div className="char-bar-bg">
                           <div className="char-bar-fill" style={{ width: `${pct}%`, background: barColor(tw.char_count) }} />
                         </div>
+                        {tw.best_time && (
+                          <div style={{ fontSize: 12, color: '#a78bfa', marginTop: 8, fontWeight: 500 }}>
+                            🕐 Best time: {tw.best_time}
+                          </div>
+                        )}
+                        {tw.reply_strategy && (
+                          <div style={{ fontSize: 12, color: 'var(--dim)', marginTop: 6, background: 'rgba(124,58,237,.06)', border: '1px solid rgba(124,58,237,.15)', borderRadius: 7, padding: '7px 10px', lineHeight: 1.5 }}>
+                            💬 <strong style={{ color: '#a78bfa' }}>Reply strategy:</strong> {tw.reply_strategy}
+                          </div>
+                        )}
                         {tw.reasoning && <div className="tweet-reasoning">💡 {tw.reasoning}</div>}
                         <div className="tweet-actions">
                           <button className="btn-action btn-copy" onClick={() => { navigator.clipboard.writeText(tw.text).then(() => toast('success', '📋 Copied!')).catch(() => toast('error', 'Copy failed')); }}>📋 Copy</button>
