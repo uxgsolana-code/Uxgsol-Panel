@@ -104,15 +104,20 @@ export default function Page() {
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           try {
-            const ev = JSON.parse(line.slice(6)) as { type: string; stage?: number; message?: string; sub?: string; data?: unknown; message?: string };
-            if (ev.type === 'progress') { setStage(ev.stage ?? 1); setStageMsg(ev.message ?? ''); setStageSub((ev as { sub?: string }).sub ?? ''); }
-            else if (ev.type === 'complete') {
+            const ev = JSON.parse(line.slice(6)) as Record<string, unknown>;
+            if (ev.type === 'progress') {
+              setStage((ev.stage as number) ?? 1);
+              setStageMsg((ev.message as string) ?? '');
+              setStageSub((ev.sub as string) ?? '');
+            } else if (ev.type === 'complete') {
               const r = ev.data as Report;
               setReport(r); saveReport(r);
               setHistory(loadHistory());
               toast('success', '✅ Report generated!');
               setTab('today');
-            } else if (ev.type === 'error') { throw new Error((ev as { message: string }).message); }
+            } else if (ev.type === 'error') {
+              throw new Error((ev.message as string) ?? 'Generation failed');
+            }
           } catch (e) { if (e instanceof SyntaxError) continue; throw e; }
         }
       }

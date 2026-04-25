@@ -57,7 +57,7 @@ function parseRSS(xml: string, src: { name: string; color: string; icon: string 
       item.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'))?.[1]?.trim() ?? '';
     const title = get('title');
     if (!title) return [];
-    const link   = get('link') || get('guid') || '';
+    const link   = get('link') || item.match(/<link[^>]+href="([^"]+)"/i)?.[1] || get('guid') || '';
     const pub    = get('pubDate') || get('dc:date') || '';
     const desc   = stripHtml(get('description')).slice(0, 200);
     return [{ title, url: link, source: src.name, source_color: src.color, source_icon: src.icon, time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
