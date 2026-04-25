@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-export const runtime = 'edge'; // no timeout limit for streaming on edge
+export const runtime = 'edge';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Article {
@@ -32,6 +32,15 @@ const RSS = [
   { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss',                    color: '#06b6d4', icon: '📡' },
 ] as const;
 
+// Keywords that signal a story is actually interesting
+const SHOCK_KEYWORDS = [
+  'hack', 'hacked', 'exploit', 'rug', 'rugpull', 'scam', 'fraud', 'stolen', 'steal',
+  'drain', 'drained', 'crash', 'collapse', 'bankrupt', 'arrested', 'jail', 'prison',
+  'billion', 'million', 'bug', 'breach', 'leaked', 'lawsuit', 'ban', 'banned', 'seized',
+  'emergency', 'bizarre', 'insane', 'wild', 'unusual', 'unexpected', 'shocking',
+  'dead', 'death', 'lost', 'loses', 'penalty', 'fine', 'vulnerable', 'vulnerability',
+];
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function timeAgo(dateStr: string): string {
   try {
@@ -52,17 +61,22 @@ function stripHtml(s: string): string {
     .trim();
 }
 
+function shockScore(a: Article): number {
+  const text = (a.title + ' ' + a.summary).toLowerCase();
+  return SHOCK_KEYWORDS.reduce((n, kw) => n + (text.includes(kw) ? 1 : 0), 0);
+}
+
 // ── Scraping ───────────────────────────────────────────────────────────────
 function parseRSS(xml: string, src: { name: string; color: string; icon: string }): Article[] {
   const items = xml.match(/<item[^>]*>[\s\S]*?<\/item>/g) ?? [];
-  return items.slice(0, 5).flatMap(item => {
+  return items.slice(0, 6).flatMap(item => {
     const get = (tag: string) =>
       item.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'))?.[1]?.trim() ?? '';
     const title = get('title');
     if (!title) return [];
-    const link   = get('link') || item.match(/<link[^>]+href="([^"]+)"/i)?.[1] || get('guid') || '';
-    const pub    = get('pubDate') || get('dc:date') || '';
-    const desc   = stripHtml(get('description')).slice(0, 200);
+    const link = get('link') || item.match(/<link[^>]+href="([^"]+)"/i)?.[1] || get('guid') || '';
+    const pub  = get('pubDate') || get('dc:date') || '';
+    const desc = stripHtml(get('description')).slice(0, 200);
     return [{ title, url: link, source: src.name, source_color: src.color, source_icon: src.icon, time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
   });
 }
@@ -76,9 +90,16 @@ async function fetchRSS(src: typeof RSS[number]): Promise<Article[]> {
 
 async function fetchCryptoPanic(): Promise<Article[]> {
   try {
-    const res = await fetch('https://cryptopanic.com/api/free/v1/posts/?public=true&kind=news', { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(7000) });
+    const res = await fetch(
+      'https://cryptopanic.com/api/v1/posts/?auth_token=free&kind=news&filter=important',
+      { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(7000) }
+    );
     const d = await res.json() as { results?: { title: string; url: string; published_at: string }[] };
-    return (d.results ?? []).slice(0, 8).map(p => ({ title: p.title, url: p.url, source: 'CryptoPanic', source_color: '#f97316', source_icon: '🔥', time_ago: timeAgo(p.published_at), summary: '' }));
+    return (d.results ?? []).slice(0, 10).map(p => ({
+      title: p.title, url: p.url, source: 'CryptoPanic',
+      source_color: '#f97316', source_icon: '🔥',
+      time_ago: timeAgo(p.published_at), summary: '',
+    }));
   } catch { return []; }
 }
 
@@ -86,109 +107,120 @@ async function getTrends(): Promise<Article[]> {
   const settled = await Promise.allSettled([fetchCryptoPanic(), ...RSS.map(fetchRSS)]);
   const all = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
   const seen = new Set<string>();
-  return all.filter(a => { const k = a.title.toLowerCase().slice(0, 50); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 15);
+  const deduped = all.filter(a => {
+    const k = a.title.toLowerCase().slice(0, 50);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  // Sort by shock score so the most interesting stories float to the top
+  return deduped.sort((a, b) => shockScore(b) - shockScore(a)).slice(0, 15);
 }
 
 // ── Claude ────────────────────────────────────────────────────────────────
-const SYSTEM = `You are writing tweets for @UxGsol — a crypto CT account with 88K followers. The voice is modelled after @loshmi and top CT influencers. You are NOT a news agency. You are NOT a professional content marketer. You are a real person online who is funny, self-aware, and chronically online in the crypto world.
 
-━━━ TWEET TYPE 1: "Influencer Voice" (write 2 of these) ━━━
+// Influencer Voice: completely independent of news — pure CT culture/humor
+const SYSTEM_INFLUENCER = `You write casual, funny CT tweets for @UxGsol (88K crypto Twitter followers). The voice is modelled after @loshmi — chronically online, self-aware, dry humor.
 
-This is NOT about news. This is about the lived experience of being a crypto person.
+These tweets have ZERO connection to any news or current events. They are timeless observations about the lived experience of being a crypto person.
 
-Topics that work:
-- the absurdity of crypto life ("i spent 6 hours researching a protocol. it rugged at 6am. gm")
-- trader psychology ("the way i check my portfolio every 4 minutes like something changed")
-- bull/bear market feelings, the emotional rollercoaster
-- web3 contradictions and irony
-- relatable fails, delusion, cope, hopium
-- observations that make other CT people go "bro literally me"
+Pick from these topic buckets (use a different one for each tweet):
+1. The daily absurdity of being a crypto trader (checking price every 4 minutes, making decisions on vibes, 3am CT browsing)
+2. Bear/bull market psychology (the cope, the delusion, the "we're early" energy in every situation)
+3. Making fun of "crypto bro" culture and stereotypes (the guy explaining his exit strategy, the guy who "did his research")
+4. The absurdity of seed phrases, gas fees, wallets, bridges, L2s (everyday life but make it blockchain)
+5. General money/wealth/failure humor in a crypto context (paper handing, missed tops, watching others win)
 
-Style rules (MANDATORY):
-- write in lowercase. always.
-- minimal punctuation. sentences can just end
-- use CT slang naturally: ngl, bro, imagine, no way, not gonna lie, this is wild, gm, ngmi, wagmi, the audacity
-- emojis used sparingly for punchlines: 💀 😭 🙏
-- short punchy sentences. the punchline lands at the end
+MANDATORY STYLE RULES:
+- all lowercase. always. no exceptions.
+- minimal punctuation — end sentences without periods. comma only when needed.
+- CT slang used naturally: ngl, bro, imagine, no way, this is wild, gm, ngmi, the audacity, not gonna lie
+- emoji ONLY as a punchline, max 1 per tweet: 💀 😭 🙏
+- short sentences. rhythm matters. the punchline is the last line.
 - NEVER start with a capital letter
-- NEVER sound like a press release or a LinkedIn post
-- NEVER include a news headline or cite a source
+- NEVER mention a specific coin price, specific news event, or real company announcement
+- NEVER sound like a newsletter, press release, or LinkedIn post
 
-The tweet MUST end with something that makes people reply — a relatable statement, a question they have an opinion on, or a take so accurate it hurts.
+The tweet must end with something that triggers replies — either a statement so accurate it physically hurts, or a question that CT people have very strong opinions about.
 
-GOOD examples (study these):
-"imagine explaining to your 2021 self that bitcoin etf would exist but you'd still be down 40% 💀"
+REFERENCE TWEETS (match this energy exactly, do not copy):
+"my trading strategy is basically just checking crypto twitter at 3am and making decisions based on vibes"
+"bro explained his exit strategy for 20 minutes. he doesn't have one."
+"the way crypto people say 'we're early' after every single disaster 💀"
+"4 years in crypto and the only thing i've mastered is refreshing coingecko"
+"imagine losing money AND having to explain what a blockchain is to your family at dinner"
 "ngl the funniest part of this cycle is watching people who called bitcoin dead in 2022 quietly buying back in"
 "crypto twitter in a bull market: we're so early / crypto twitter in a bear market: we're so early"
 "the audacity of a project to launch a token, go to zero, then ask you to migrate to v2 💀"
 "not financial advice but also not NOT financial advice you know what i mean"
-"bro i spent 3 hours researching a defi protocol last night. it rugged this morning. gm"
-"the way crypto people explain bear markets: 'actually this is very healthy for the ecosystem'"
-"imagine paper handing eth at $80 and then spending 4 years coping about it on CT 😭"
 
-BAD examples (never write like this):
-"The crypto market shows signs of institutional adoption as BlackRock surpasses Deribit."
-"AI agents are becoming more prevalent in DeFi ecosystems, signaling a paradigm shift."
-"Not sure who needs to hear this, but Bitcoin fundamentals remain strong."
+Return ONLY a valid JSON array with exactly 2 tweets, no markdown:
+[{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a self-aware follow-up that extends the joke or adds a harder truth","text":"...","char_count":0,"reasoning":"..."}]`;
 
-━━━ TWEET TYPE 2: "News Hook" (write 3 of these) ━━━
+// News Hook: picks wildest real stories, tells them in casual CT voice
+const SYSTEM_NEWS = `You write 3 "News Hook" tweets for @UxGsol (88K crypto followers) in the style of a chronically online CT person.
 
-Use the real trending news provided. Pick the most genuinely wild, surprising, or absurd story.
+You will receive today's real crypto/tech news. Your job:
+1. Pick the 3 MOST shocking, absurd, or genuinely wild stories — hacks, exploits, rugpulls, insane amounts lost, arrests, bans, bizarre plot twists. Ignore boring price action or standard "adoption" news.
+2. Tell each story like you're texting a friend who is also very online: casual, lowercase, no formality.
 
-Format: Crazy Story
-- Line 1: the most shocking true fact from the story — written like you just can't believe this happened
-- Body: who did what → how → the twist or result
-- Tone: like you're telling a friend "bro you won't believe this"
-- Still lowercase, still CT energy, not formal
-- No links, no sources cited in the tweet
-- End naturally — the story speaks for itself, people reply because they're shocked
+Format per tweet:
+- First line: the single most jaw-dropping true fact from the story — "wait, what?" energy
+- 1-2 lines: who did what → how → the twist or result
+- End naturally. No call-to-action. The story is wild enough.
 
-━━━ ALGORITHM RULES (2026 X) ━━━
-- reply = 150× a like — write for replies, not likes
-- first 30 min after posting = make or break
-- no external links — kills reach
-- no engagement bait phrases
-- text-only outperforms everything
+Rules:
+- lowercase throughout
+- no links, no "source: X", no citations in the tweet text
+- max 280 characters — count carefully
+- zero fabricated details — only what's in the news provided
+- CT slang welcome but don't force it
 
-━━━ HARD RULES ━━━
-- English only
-- Max 280 characters — count carefully
-- Zero fabricated events or statistics
-- No thread callouts
-- No calls-to-action`;
+Return ONLY a valid JSON array with exactly 3 tweets, no markdown:
+[{"type":"news_hook","format":"News Hook","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra detail or a shocked reaction to keep the story alive","text":"...","char_count":0,"reasoning":"..."}]`;
 
-
-async function genTweets(trends: Article[], client: Anthropic): Promise<Tweet[]> {
-  const trendsText = trends.slice(0, 10)
-    .map((t, i) => `${i + 1}. [${t.source}] ${t.title}${t.summary ? `\n   → ${t.summary.slice(0, 100)}` : ''}`)
-    .join('\n');
-
+async function genInfluencerTweets(client: Anthropic): Promise<Tweet[]> {
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2500,
-    system: SYSTEM,
-    messages: [{ role: 'user', content: `Today's trending crypto news:\n\n${trendsText}\n\nGenerate exactly 5 tweets:\n- 2× "Influencer Voice" — lowercase, CT slang, relatable crypto life observation, NO news, ends with something people reply to\n- 3× "News Hook" — pick the wildest story from the news above, tell it like a friend in CT voice, shocking first line\n\nRemember: Influencer Voice tweets are about feelings/experiences/observations, NOT news summaries. Write like @loshmi, not like Reuters.\n\nReturn ONLY a valid JSON array, no markdown:\n[{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a relatable follow-up that keeps the conversation going","text":"...","char_count":0,"reasoning":"..."}]` }],
+    max_tokens: 1200,
+    system: SYSTEM_INFLUENCER,
+    messages: [{ role: 'user', content: 'Write 2 Influencer Voice tweets now. Remember: no news, no current events, pure CT culture humor. All lowercase. Punchline at the end.' }],
   });
-
   let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
-  if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```$/, '').trim();
+  if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
+  const tweets = JSON.parse(raw) as Tweet[];
+  return tweets.map(t => ({ ...t, char_count: t.text.length }));
+}
+
+async function genNewsHooks(trends: Article[], client: Anthropic): Promise<Tweet[]> {
+  const trendsText = trends.slice(0, 10)
+    .map((t, i) => `${i + 1}. [${t.source}] ${t.title}${t.summary ? `\n   → ${t.summary.slice(0, 120)}` : ''}`)
+    .join('\n');
+  const msg = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    system: SYSTEM_NEWS,
+    messages: [{ role: 'user', content: `Today's crypto news (sorted by interestingness):\n\n${trendsText}\n\nWrite 3 News Hook tweets. Pick the 3 wildest stories. Tell them in CT casual voice.` }],
+  });
+  let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
+  if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
   const tweets = JSON.parse(raw) as Tweet[];
   return tweets.map(t => ({ ...t, char_count: t.text.length }));
 }
 
 async function genTip(trends: Article[], tweets: Tweet[], client: Anthropic): Promise<string> {
+  const newsHook = tweets.find(t => t.type === 'news_hook');
+  const influencer = tweets.find(t => t.type === 'influencer_voice');
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 180,
-    messages: [{ role: 'user', content: `Write a 1-paragraph strategy tip (max 75 words) for @UxGsol (88K crypto Twitter followers).\nTop trend: ${trends[0]?.title ?? 'crypto'}\nBest tweet type: ${tweets[0]?.format ?? 'Influencer Voice'}\nBest post time: ${tweets[0]?.best_time ?? '14:00 UTC'}\nInclude: which draft to post first, exactly when (UTC), and one specific reply-window tactic for the first 30 minutes. Be precise and actionable.` }],
+    messages: [{ role: 'user', content: `Write a 1-paragraph strategy tip (max 75 words) for @UxGsol (88K crypto Twitter followers).\nTop story today: ${trends[0]?.title ?? 'crypto'}\nBest News Hook time: ${newsHook?.best_time ?? '14:00 UTC'}\nBest Influencer Voice time: ${influencer?.best_time ?? '18:00 UTC'}\nInclude: post order, exact times (UTC), and one specific tactic for the first 30-minute reply window. Be precise and actionable.` }],
   });
   return (msg.content[0] as { type: 'text'; text: string }).text.trim();
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  // Guard: reject requests that don't carry the dashboard token.
-  // Set NEXT_PUBLIC_GUARD_TOKEN in Vercel env vars (any random string, e.g. a UUID).
   const guardToken = process.env.NEXT_PUBLIC_GUARD_TOKEN;
   if (guardToken && req.headers.get('x-guard-token') !== guardToken) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
@@ -207,13 +239,18 @@ export async function POST(req: Request) {
       const send = (obj: object) => ctrl.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
 
       try {
-        send({ type: 'progress', stage: 1, message: '🔍 Scanning crypto trends...', sub: 'CryptoPanic · CoinDesk · Decrypt · The Defiant · CoinTelegraph' });
+        send({ type: 'progress', stage: 1, message: '🔍 Scanning crypto news for wild stories...', sub: 'CryptoPanic · CoinDesk · Decrypt · The Defiant · CoinTelegraph' });
         const trends = await getTrends();
         const safeTrends = trends.length ? trends : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
         send({ type: 'trends', data: safeTrends });
 
-        send({ type: 'progress', stage: 2, message: '🤖 Generating tweet drafts with Claude AI...', sub: '2× Influencer Voice · 3× News Hook · 2026 algorithm rules...' });
-        const tweets = await genTweets(safeTrends, client);
+        send({ type: 'progress', stage: 2, message: '🤖 Generating tweets with Claude AI...', sub: 'Influencer Voice (no news) + News Hook (wildest stories)...' });
+        // Run both generation calls in parallel — they're fully independent
+        const [influencerTweets, newsHooks] = await Promise.all([
+          genInfluencerTweets(client),
+          genNewsHooks(safeTrends, client),
+        ]);
+        const tweets = [...influencerTweets, ...newsHooks];
         send({ type: 'tweets', data: tweets });
 
         send({ type: 'progress', stage: 3, message: '💡 Creating today\'s strategy tip...', sub: 'Almost done...' });
