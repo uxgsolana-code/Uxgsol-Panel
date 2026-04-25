@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 // It's bundled into the client JS (so not a "secret"), but it raises the bar
 // for anyone trying to abuse the /api/generate endpoint.
 const GUARD_TOKEN = process.env.NEXT_PUBLIC_GUARD_TOKEN ?? '';
-const AUTH_HEADERS = GUARD_TOKEN ? { 'x-guard-token': GUARD_TOKEN } : {};
+const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GUARD_TOKEN } : {};
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend  { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
