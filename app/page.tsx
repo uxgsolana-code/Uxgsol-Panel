@@ -8,7 +8,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
+interface Tweet       { type: 'story' | 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning?: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
@@ -63,6 +63,7 @@ function computeFormatStats(tweets: PostedTweet[]): FormatStats[] {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmtBadge(f: string) {
   const s = f.toLowerCase();
+  if (s.includes('story'))      return 'badge b-hidden';
   if (s.includes('influencer')) return 'badge b-truth';
   if (s.includes('news') || s.includes('hook')) return 'badge b-crazy';
   if (s.includes('crazy'))  return 'badge b-crazy';
@@ -210,7 +211,7 @@ export default function Page() {
       setReport(data); saveReport(data);
       setHistory(loadHistory());
       setSaved(new Set()); setSkipped(new Set()); setPosted(new Set());
-      toast('success', '✅ 6 tweets generated!');
+      toast('success', '✅ 3 posts generated!');
       setTab('today');
     } catch (e) {
       toast('error', `❌ ${e instanceof Error ? e.message : 'Generation failed — check API key.'}`);
@@ -230,8 +231,8 @@ export default function Page() {
       {loading && (
         <div className="loading-overlay">
           <div className="spinner" />
-          <div className="loading-stage">⚡ Generating 6 tweets...</div>
-          <div className="loading-sub">3× Influencer Voice · 3× News Hook · ~20 seconds</div>
+          <div className="loading-stage">⚡ Generating 3 posts...</div>
+          <div className="loading-sub">1× Story · 1× Influencer Voice · 1× News Hook · ~20 seconds</div>
         </div>
       )}
 
@@ -319,7 +320,7 @@ export default function Page() {
                 <div className="empty-state">
                   <div className="empty-icon">📡</div>
                   <div className="empty-title">No Report Generated Yet</div>
-                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 6 tweet drafts — 3 Influencer Voice + 3 News Hook.</div>
+                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 3 posts — 1 Story · 1 Influencer Voice · 1 News Hook.</div>
                   <button className="btn-primary" onClick={generateReport}>
                     <span>⚡</span> Generate Today&apos;s Report
                   </button>
@@ -362,25 +363,26 @@ export default function Page() {
                   </div>
 
                   {report.tweets.map((tw, i) => {
-                    const isThread = tw.is_thread ?? tw.type === 'news_hook';
-                    const pct = isThread ? 0 : Math.min(100, Math.round((tw.char_count / 280) * 100));
+                    const isStory   = tw.type === 'story';
+                    const isLong    = isStory || (tw.is_thread ?? tw.type === 'news_hook');
+                    const pct       = isLong ? 0 : Math.min(100, Math.round((tw.char_count / 280) * 100));
                     return (
                       <div key={i} id={`tw-${i}`} className={`tweet-card slide-in${skipped.has(i) ? ' skipped' : ''}`} style={{ animationDelay: `${i * 0.07}s` }}>
                         <div className="tweet-header">
                           <span className={fmtBadge(tw.format)}>{tw.format}</span>
-                          {isThread && (
-                            <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,.12)', border: '1px solid rgba(6,182,212,.25)', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.3px' }}>
-                              THREAD
+                          {isStory && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,.12)', border: '1px solid rgba(167,139,250,.25)', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.3px' }}>
+                              LONG READ
                             </span>
                           )}
                           <span className={potBadge(tw.reply_potential)} style={{ fontSize: 9 }}>{potLabel(tw.reply_potential)}</span>
                           {tw.story_date && tw.type === 'news_hook' && (
                             <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(148,163,184,.08)', border: '1px solid rgba(148,163,184,.2)', borderRadius: 5, padding: '2px 7px' }}>📅 {tw.story_date}</span>
                           )}
-                          <span className="tweet-char">{isThread ? `${tw.char_count} chars` : `${tw.char_count}/280`}</span>
+                          <span className="tweet-char">{isLong ? `${tw.char_count} chars` : `${tw.char_count}/280`}</span>
                         </div>
-                        <div className="tweet-body" style={{ whiteSpace: 'pre-wrap', lineHeight: isThread ? 1.65 : 1.5 }}>{tw.text}</div>
-                        {!isThread && (
+                        <div className="tweet-body" style={{ whiteSpace: 'pre-wrap', lineHeight: isStory ? 1.7 : isLong ? 1.65 : 1.5 }}>{tw.text}</div>
+                        {!isLong && (
                           <div className="char-bar-bg">
                             <div className="char-bar-fill" style={{ width: `${pct}%`, background: barColor(tw.char_count) }} />
                           </div>
@@ -455,7 +457,7 @@ export default function Page() {
                       {/* Tweet list */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                         {r.tweets.map((tw, ti) => {
-                          const isThread = tw.is_thread ?? tw.type === 'news_hook';
+                          const isThread = tw.type === 'story' || (tw.is_thread ?? tw.type === 'news_hook');
                           return (
                             <div key={ti} className="tweet-card" style={{ padding: '12px 14px' }}>
                               <div className="tweet-header" style={{ marginBottom: 8 }}>
