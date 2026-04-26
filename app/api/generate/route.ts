@@ -182,6 +182,7 @@ Style (mandatory):
 - NEVER start with capital letter
 
 CRITICAL: Keep each tweet under 80 words. Return valid complete JSON only. Do not truncate.
+You MUST return exactly 3 tweets in the JSON array with type "influencer_voice". No more, no less.
 
 Return ONLY a valid JSON array, no markdown, no explanation:
 [{"type":"influencer_voice","format":"Influencer Voice","is_thread":false,"reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0}]`;
@@ -201,6 +202,7 @@ Rules: lowercase, no links in text, zero fabricated details.
 Set source_url to the article URL you used, source_name to publication name.
 
 CRITICAL: Keep each post under 80 words. Return valid complete JSON only. Do not truncate.
+You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less.
 
 Return ONLY a valid JSON array, no markdown, no explanation:
 [{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
@@ -278,10 +280,16 @@ export async function POST(req: Request) {
       ? trends
       : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
 
-    const [influencerTweets, newsHooks] = await Promise.all([
+    const [influencerFirst, newsFirst] = await Promise.all([
       genInfluencerTweets(client, context.influencerThemes, formatHint, previousTopics),
       genNewsHooks(safeTrends, client, context.newsCategories, previousTopics),
     ]);
+    const influencerTweets = influencerFirst.length >= 3
+      ? influencerFirst
+      : await genInfluencerTweets(client, context.influencerThemes, formatHint, previousTopics);
+    const newsHooks = newsFirst.length >= 3
+      ? newsFirst
+      : await genNewsHooks(safeTrends, client, context.newsCategories, previousTopics);
 
     const tweets = [...influencerTweets, ...newsHooks];
     const tip    = await genTip(safeTrends, tweets, client);

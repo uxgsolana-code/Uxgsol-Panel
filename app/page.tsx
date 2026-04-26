@@ -38,6 +38,10 @@ function updatePostedTweet(id: string, metrics: Partial<PostedTweet>) {
   const prev = loadPostedTweets();
   localStorage.setItem(POSTED_KEY, JSON.stringify(prev.map(t => t.id === id ? { ...t, ...metrics } : t)));
 }
+function deletePostedTweet(id: string) {
+  const prev = loadPostedTweets();
+  localStorage.setItem(POSTED_KEY, JSON.stringify(prev.filter(t => t.id !== id)));
+}
 function computeFormatStats(tweets: PostedTweet[]): FormatStats[] {
   const tracked = tweets.filter(t => t.views > 0);
   const groups = new Map<string, PostedTweet[]>();
@@ -153,6 +157,14 @@ export default function Page() {
       },
     }));
   }, []);
+
+  const handleDeletePosted = useCallback((id: string) => {
+    deletePostedTweet(id);
+    const updated = loadPostedTweets();
+    setPostedTweets(updated);
+    setStats(computeFormatStats(updated));
+    toast('success', '🗑️ Deleted.');
+  }, [toast]);
 
   const saveMetrics = useCallback((id: string) => {
     const draft = metricDraft[id];
@@ -569,6 +581,13 @@ export default function Page() {
                               {hasMetrics ? '✏️ Edit Metrics' : '📊 Add Metrics'}
                             </button>
                             <button className="btn-action btn-copy" onClick={() => navigator.clipboard.writeText(tw.text).then(() => toast('success', '📋 Copied!')).catch(() => toast('error', 'Copy failed'))}>📋 Copy</button>
+                            <button
+                              className="btn-action"
+                              style={{ background: 'rgba(239,68,68,.1)', color: '#f87171', border: '1px solid rgba(239,68,68,.25)', marginLeft: 'auto' }}
+                              onClick={() => handleDeletePosted(tw.id)}
+                            >
+                              🗑️ Delete
+                            </button>
                           </div>
                         )}
                       </div>
