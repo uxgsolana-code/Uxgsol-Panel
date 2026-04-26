@@ -16,6 +16,7 @@ interface Article {
 interface Tweet {
   type: 'influencer_voice' | 'news_hook';
   format: string;
+  is_thread: boolean;
   reply_potential: 'HIGH' | 'MEDIUM' | 'LOW';
   best_time: string;
   reply_strategy: string;
@@ -154,40 +155,51 @@ REFERENCE TWEETS (match this energy exactly, do not copy):
 "the audacity of a project to launch a token, go to zero, then ask you to migrate to v2 💀"
 "not financial advice but also not NOT financial advice you know what i mean"
 
-Return ONLY a valid JSON array with exactly 2 tweets, no markdown:
-[{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a self-aware follow-up that extends the joke or adds a harder truth","text":"...","char_count":0,"reasoning":"..."}]`;
+Return ONLY a valid JSON array with exactly 5 tweets, no markdown:
+[{"type":"influencer_voice","format":"Influencer Voice","is_thread":false,"reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a self-aware follow-up that extends the joke or adds a harder truth","text":"...","char_count":0,"reasoning":"..."}]`;
 
-// News Hook: picks wildest real stories, tells them in casual CT voice
-const SYSTEM_NEWS = `You write 3 "News Hook" tweets for @UxGsol (88K crypto followers) in the style of a chronically online CT person.
+// News Hook: long-form thread-style posts, wildest real stories
+const SYSTEM_NEWS = `You write 5 long-form "News Hook" thread posts for @UxGsol (88K crypto followers).
 
-You will receive today's real crypto/tech news. Your job:
-1. Pick the 3 MOST shocking, absurd, or genuinely wild stories — hacks, exploits, rugpulls, insane amounts lost, arrests, bans, bizarre plot twists. Ignore boring price action or standard "adoption" news.
-2. Tell each story like you're texting a friend who is also very online: casual, lowercase, no formality.
+You are given today's real crypto/tech news. Pick the 5 most shocking, absurd, or genuinely wild stories — hacks, exploits, rugpulls, insane amounts lost, arrests, bans, bizarre plot twists. Ignore boring price action or standard adoption news.
 
-Format per tweet:
-- First line: the single most jaw-dropping true fact from the story — "wait, what?" energy
-- 1-2 lines: who did what → how → the twist or result
-- End naturally. No call-to-action. The story is wild enough.
+Each post is a LONG-FORM THREAD-STYLE DRAFT (400–700 characters):
 
-Rules:
+Structure:
+Line 1 — HOOK: the single most jaw-dropping true fact. Pure "wait, what?" energy. No pleasantries.
+
+[blank line]
+
+Paragraph 1 (2-3 short lines): who, what, how — the setup. Make it feel like a story unfolding.
+
+[blank line]
+
+Paragraph 2 (2-3 short lines): the details — scale, absurdity, what makes this genuinely wild.
+
+[blank line]
+
+Final line — TWIST or QUESTION: the punchline, consequence, or a question that makes CT people reply.
+
+Style rules:
 - lowercase throughout
-- no links, no "source: X", no citations in the tweet text
-- max 280 characters — count carefully
-- zero fabricated details — only what's in the news provided
-- CT slang welcome but don't force it
+- no "1/3" "2/3" thread numbering
+- no links, no source citations in the text
+- zero fabricated details — only what the news provided says
+- CT energy throughout — not a news article, not a press release
+- blank lines between sections for readability
 
-Return ONLY a valid JSON array with exactly 3 tweets, no markdown:
-[{"type":"news_hook","format":"News Hook","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra detail or a shocked reaction to keep the story alive","text":"...","char_count":0,"reasoning":"..."}]`;
+Return ONLY a valid JSON array with exactly 5 tweets, no markdown:
+[{"type":"news_hook","format":"News Hook","is_thread":true,"reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra detail or your own shocked reaction to keep the story alive","text":"...","char_count":0,"reasoning":"..."}]`;
 
 async function genInfluencerTweets(client: Anthropic, formatHint = ''): Promise<Tweet[]> {
   const hintLine = formatHint
-    ? `\n\nPerformance data from past posts shows "${formatHint}" gets the highest engagement for this account — lean into that energy for at least one of the 2 tweets.`
+    ? `\n\nPerformance data from past posts shows "${formatHint}" gets the highest engagement for this account — lean into that energy for at least one of the 5 tweets.`
     : '';
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1200,
+    max_tokens: 2000,
     system: SYSTEM_INFLUENCER,
-    messages: [{ role: 'user', content: `Write 2 Influencer Voice tweets now. No news, no current events, pure CT culture humor. All lowercase. Punchline at the end.${hintLine}` }],
+    messages: [{ role: 'user', content: `Write 5 Influencer Voice tweets now. No news, no current events, pure CT culture humor. All lowercase. Punchline at the end. Each tweet must be under 280 characters. Use 5 DIFFERENT topic buckets — don't repeat the same angle.${hintLine}` }],
   });
   let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
   if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
@@ -201,9 +213,9 @@ async function genNewsHooks(trends: Article[], client: Anthropic): Promise<Tweet
     .join('\n');
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
+    max_tokens: 4000,
     system: SYSTEM_NEWS,
-    messages: [{ role: 'user', content: `Today's crypto news (sorted by interestingness):\n\n${trendsText}\n\nWrite 3 News Hook tweets. Pick the 3 wildest stories. Tell them in CT casual voice.` }],
+    messages: [{ role: 'user', content: `Today's crypto news (sorted by interestingness):\n\n${trendsText}\n\nWrite 5 long-form News Hook thread posts. Pick the 5 wildest stories. Each post must follow the hook → paragraph 1 → paragraph 2 → twist/question structure with blank lines between sections.` }],
   });
   let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
   if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
@@ -254,7 +266,7 @@ export async function POST(req: Request) {
         const safeTrends = trends.length ? trends : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
         send({ type: 'trends', data: safeTrends });
 
-        send({ type: 'progress', stage: 2, message: '🤖 Generating tweets with Claude AI...', sub: 'Influencer Voice (no news) + News Hook (wildest stories)...' });
+        send({ type: 'progress', stage: 2, message: '🤖 Generating 10 tweets with Claude AI...', sub: '5× Influencer Voice · 5× News Hook (long format)...' });
         const [influencerTweets, newsHooks] = await Promise.all([
           genInfluencerTweets(client, formatHint),
           genNewsHooks(safeTrends, client),

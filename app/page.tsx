@@ -8,7 +8,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
+interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
@@ -332,7 +332,7 @@ export default function Page() {
                 <div className="empty-state">
                   <div className="empty-icon">📡</div>
                   <div className="empty-title">No Report Generated Yet</div>
-                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 5 high-engagement tweet drafts — 2 Influencer Voice + 3 News Hook — optimised for the 2026 X algorithm.</div>
+                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 10 tweet drafts — 5 Influencer Voice (short &amp; punchy) + 5 News Hook (long-form thread posts).</div>
                   <button className="btn-primary" onClick={generateReport}>
                     <span>⚡</span> Generate Today&apos;s Report
                   </button>
@@ -375,18 +375,26 @@ export default function Page() {
                   </div>
 
                   {report.tweets.map((tw, i) => {
-                    const pct = Math.min(100, Math.round((tw.char_count / 280) * 100));
+                    const isThread = tw.is_thread ?? tw.type === 'news_hook';
+                    const pct = isThread ? 0 : Math.min(100, Math.round((tw.char_count / 280) * 100));
                     return (
                       <div key={i} id={`tw-${i}`} className={`tweet-card slide-in${skipped.has(i) ? ' skipped' : ''}`} style={{ animationDelay: `${i * 0.07}s` }}>
                         <div className="tweet-header">
                           <span className={fmtBadge(tw.format)}>{tw.format}</span>
+                          {isThread && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,.12)', border: '1px solid rgba(6,182,212,.25)', borderRadius: 5, padding: '2px 7px', letterSpacing: '0.3px' }}>
+                              THREAD
+                            </span>
+                          )}
                           <span className={potBadge(tw.reply_potential)} style={{ fontSize: 9 }}>{potLabel(tw.reply_potential)}</span>
-                          <span className="tweet-char">{tw.char_count}/280</span>
+                          <span className="tweet-char">{isThread ? `${tw.char_count} chars` : `${tw.char_count}/280`}</span>
                         </div>
-                        <div className="tweet-body">{tw.text}</div>
-                        <div className="char-bar-bg">
-                          <div className="char-bar-fill" style={{ width: `${pct}%`, background: barColor(tw.char_count) }} />
-                        </div>
+                        <div className="tweet-body" style={{ whiteSpace: 'pre-wrap', lineHeight: isThread ? 1.65 : 1.5 }}>{tw.text}</div>
+                        {!isThread && (
+                          <div className="char-bar-bg">
+                            <div className="char-bar-fill" style={{ width: `${pct}%`, background: barColor(tw.char_count) }} />
+                          </div>
+                        )}
                         {tw.best_time && (
                           <div style={{ fontSize: 12, color: '#a78bfa', marginTop: 8, fontWeight: 500 }}>
                             🕐 Best time: {tw.best_time}
