@@ -8,7 +8,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
+interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
@@ -374,6 +374,9 @@ export default function Page() {
                             </span>
                           )}
                           <span className={potBadge(tw.reply_potential)} style={{ fontSize: 9 }}>{potLabel(tw.reply_potential)}</span>
+                          {tw.story_date && tw.type === 'news_hook' && (
+                            <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(148,163,184,.08)', border: '1px solid rgba(148,163,184,.2)', borderRadius: 5, padding: '2px 7px' }}>📅 {tw.story_date}</span>
+                          )}
                           <span className="tweet-char">{isThread ? `${tw.char_count} chars` : `${tw.char_count}/280`}</span>
                         </div>
                         <div className="tweet-body" style={{ whiteSpace: 'pre-wrap', lineHeight: isThread ? 1.65 : 1.5 }}>{tw.text}</div>
@@ -459,6 +462,9 @@ export default function Page() {
                                 <span className={fmtBadge(tw.format)}>{tw.format}</span>
                                 {isThread && (
                                   <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,.12)', border: '1px solid rgba(6,182,212,.25)', borderRadius: 5, padding: '2px 7px' }}>THREAD</span>
+                                )}
+                                {tw.story_date && tw.type === 'news_hook' && (
+                                  <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(148,163,184,.08)', border: '1px solid rgba(148,163,184,.2)', borderRadius: 5, padding: '2px 7px' }}>📅 {tw.story_date}</span>
                                 )}
                                 <span className="tweet-char" style={{ marginLeft: 'auto' }}>{tw.char_count} chars</span>
                               </div>

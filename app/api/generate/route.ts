@@ -10,6 +10,7 @@ interface Article {
   source_color: string;
   source_icon: string;
   time_ago: string;
+  published_at?: string; // ISO string — used for 48h freshness filter
   summary: string;
 }
 
@@ -19,6 +20,7 @@ interface Tweet {
   is_thread: boolean;
   source_url?: string;
   source_name?: string;
+  story_date?: string;   // e.g. "Apr 27" — for news hook date badge
   reply_potential: 'HIGH' | 'MEDIUM' | 'LOW';
   best_time: string;
   reply_strategy: string;
@@ -146,7 +148,8 @@ function parseRSS(xml: string, src: { name: string; color: string; icon: string 
     const link = get('link') || item.match(/<link[^>]+href="([^"]+)"/i)?.[1] || get('guid') || '';
     const pub  = get('pubDate') || get('dc:date') || '';
     const desc = stripHtml(get('description')).slice(0, 150);
-    return [{ title, url: link, source: src.name, source_color: src.color, source_icon: src.icon, time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
+    const pubIso = pub ? (() => { try { return new Date(pub).toISOString(); } catch { return undefined; } })() : undefined;
+    return [{ title, url: link, source: src.name, source_color: src.color, source_icon: src.icon, time_ago: pub ? timeAgo(pub) : 'recently', published_at: pubIso, summary: desc }];
   });
 }
 
@@ -167,9 +170,17 @@ async function fetchCryptoPanic(): Promise<Article[]> {
     return (d.results ?? []).slice(0, 8).map(p => ({
       title: p.title, url: p.url, source: 'CryptoPanic',
       source_color: '#f97316', source_icon: '🔥',
-      time_ago: timeAgo(p.published_at), summary: '',
+      time_ago: timeAgo(p.published_at), published_at: p.published_at, summary: '',
     }));
   } catch { return []; }
+}
+
+function isRecent(a: Article): boolean {
+  if (!a.published_at) return true; // can't verify date → include it
+  try {
+    const age = Date.now() - new Date(a.published_at).getTime();
+    return age <= 48 * 60 * 60 * 1000;
+  } catch { return true; }
 }
 
 async function getTrends(): Promise<Article[]> {
@@ -184,7 +195,7 @@ async function getTrends(): Promise<Article[]> {
       const k = a.title.toLowerCase().slice(0, 50);
       if (seen.has(k)) return false;
       seen.add(k);
-      return true;
+      return isRecent(a);
     })
     .sort((a, b) => (shockScore(b) - boringScore(b) * 2) - (shockScore(a) - boringScore(a) * 2))
     .slice(0, 12);
@@ -193,9 +204,14 @@ async function getTrends(): Promise<Article[]> {
 // ── Prompts ────────────────────────────────────────────────────────────────
 const SYSTEM_INFLUENCER = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
 
-You write casual CT tweets for @UxGsol (88K crypto followers). Voice: @loshmi — chronically online, self-aware, dry humor.
+You write casual CT tweets for @UxGsol (88K crypto followers). Voice: chronically online, self-aware, dry humor. Generate from universal crypto experiences — NOT from news.
 
-Use today's actual crypto prices and events. React with dry humor — airdrops, memecoin psychology, NFT regrets, CT archetypes, seed phrase dramas, DeFi absurdities, BTC/ETH/SOL price reactions. But NEVER summarize news. Just vibe.
+Tone examples:
+- "imagine selling BTC at 60k because you 'took profits' 💀"
+- "the guy who told me crypto was dead in 2022 just asked me which wallet to use"
+- "bro explained DeFi to his dad. his dad bought a memecoin. it 10x'd. bro is still in the red 💀"
+- "airdrop season is just the universe's way of testing if you did your homework"
+- "ngl the best crypto investment I ever made was buying more during the moment everyone said it was over"
 
 Style (mandatory):
 - all lowercase, always
@@ -204,6 +220,7 @@ Style (mandatory):
 - emoji as punchline only, max 1: 💀 😭 🙏
 - punchline lands on the last line
 - NEVER start with capital letter
+- short, punchy — each tweet is a complete thought
 
 You MUST return exactly 3 tweets in the JSON array with type "influencer_voice". No more, no less. Keep each tweet under 80 words.
 
@@ -212,39 +229,39 @@ Output format (return this exact structure):
 
 const SYSTEM_NEWS = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
 
-You write News Hook posts for @UxGsol (88K crypto followers).
+You write News Hook posts for @UxGsol (88K crypto followers). Style: @0xSweep — storytelling, not bullet points.
 
 ONLY cover: hacks/exploits, rug pulls, memecoin/NFT drama, whale moves, airdrops, DeFi failures, arrests/lawsuits, prediction market chaos, ordinary people getting rich or ruined.
 SKIP entirely: price analysis, institutional adoption, regulatory updates, partnerships, ETF news.
+Only use news from the last 48 hours. If you cannot verify the date, do not include it.
 
-Format per post (max 80 words):
-Line 1 — HOOK: most jaw-dropping true fact. "Wait, what?" energy.
-[blank line]
-Body (2-3 lines): who, what, how, the twist.
-[blank line]
-Final line — consequence or question that demands a reply.
+Storytelling format (max 80 words, flowing prose — NO bullet points):
+- Open with the most jaw-dropping sentence. "Wait, what?" energy.
+- Each sentence pulls the reader into the next.
+- End with a twist, irony, or question that forces a reply.
+- Tone: lowercase, dry wit, slightly absurd.
 
-Rules: lowercase, no links in text, zero fabricated details.
-source_url (exact article URL) and source_name (publication name) are REQUIRED on every tweet — never leave them empty.
+Rules: no links in text, zero fabricated details.
+story_date = short date string e.g. "Apr 27".
+source_url (exact article URL) and source_name are REQUIRED — never leave them empty.
 
-You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less. Keep each post under 80 words.
+You MUST return exactly 3 tweets with type "news_hook". No more, no less. Keep each under 80 words.
 
 Output format (return this exact structure):
-[{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
+[{"type":"news_hook","format":"News Hook","is_thread":false,"story_date":"Apr 27","source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
-async function genInfluencerTweets(client: Anthropic, themes: string[], trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
-  const themesText    = themes.map((t, i) => `${i + 1}. ${t}`).join('\n');
-  const trendContext  = trends.slice(0, 6).map(t => `- ${t.title}`).join('\n');
-  const hintLine      = formatHint ? `\nPerformance data: "${formatHint}" format gets the highest engagement.` : '';
-  const avoidLine     = prevTopics.length ? `\nDo NOT repeat these topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
-  const perfLine      = perfExamples.length ? `\nTop-performing tweets from this account — match this tone and style:\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
+async function genInfluencerTweets(client: Anthropic, themes: string[], _trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
+  const themesText = themes.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  const hintLine   = formatHint ? `\nPerformance data: "${formatHint}" format gets the highest engagement.` : '';
+  const avoidLine  = prevTopics.length ? `\nDo NOT repeat these topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
+  const perfLine   = perfExamples.length ? `\nTop-performing tweets from this account — match this tone and style:\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1200,
     system: SYSTEM_INFLUENCER,
-    messages: [{ role: 'user', content: `Today's crypto context — react to these naturally (prices, events, vibes):\n${trendContext}\n\nWrite exactly 3 Influencer Voice tweets. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}${perfLine}` }],
+    messages: [{ role: 'user', content: `Write exactly 3 Influencer Voice tweets. Universal crypto experiences only — no news references. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}${perfLine}` }],
   });
 
   const textBlock = msg.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
@@ -256,9 +273,12 @@ async function genInfluencerTweets(client: Anthropic, themes: string[], trends: 
 
 async function genNewsHooks(trends: Article[], client: Anthropic, categories: string[], prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
   const categoriesText = categories.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  const trendsText = trends.slice(0, 8).map((t, i) =>
-    `[${i + 1}] ${t.source} | URL: ${t.url || 'n/a'}\n${t.title}${t.summary ? `\n→ ${t.summary.slice(0, 100)}` : ''}`
-  ).join('\n\n');
+  const trendsText = trends.slice(0, 8).map((t, i) => {
+    const dateLabel = t.published_at
+      ? (() => { try { return new Date(t.published_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return ''; } })()
+      : '';
+    return `[${i + 1}] ${t.source}${dateLabel ? ` | ${dateLabel}` : ''} | URL: ${t.url || 'n/a'}\n${t.title}${t.summary ? `\n→ ${t.summary.slice(0, 100)}` : ''}`;
+  }).join('\n\n');
   const avoidLine  = prevTopics.length ? `\nDo NOT repeat topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
   const perfLine   = perfExamples.length ? `\nTop-performing tweets from this account — match this engagement style:\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
 
