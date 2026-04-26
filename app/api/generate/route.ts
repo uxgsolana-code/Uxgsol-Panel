@@ -75,15 +75,6 @@ const RSS = [
   { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss',                    color: '#06b6d4', icon: '📡' },
 ] as const;
 
-// Google News search queries targeting shock/absurd content only
-const SEARCH_QUERIES = [
-  'crypto hack exploit today 2026',
-  'memecoin rug pull today 2026',
-  'crypto whale unusual transaction today',
-  'DeFi exploit drained today 2026',
-  'crypto arrested scam today 2026',
-] as const;
-
 const SHOCK_KEYWORDS = [
   'hack', 'exploit', 'rug', 'scam', 'fraud', 'stolen', 'drain', 'crash',
   'collapse', 'bankrupt', 'arrested', 'jail', 'bug', 'breach', 'leaked',
@@ -159,23 +150,6 @@ function parseRSS(xml: string, src: { name: string; color: string; icon: string 
   });
 }
 
-function parseGoogleNewsRSS(xml: string): Article[] {
-  const items = xml.match(/<item[^>]*>[\s\S]*?<\/item>/g) ?? [];
-  return items.slice(0, 3).flatMap(item => {
-    const get = (tag: string) =>
-      item.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'))?.[1]?.trim() ?? '';
-    const rawTitle = get('title');
-    if (!rawTitle) return [];
-    const title    = rawTitle.replace(/ - [^-]{1,50}$/, '').trim();
-    const link     = get('link') || get('guid') || '';
-    const pub      = get('pubDate') || '';
-    const srcMatch = item.match(/<source[^>]+>([^<]+)<\/source>/i);
-    const srcName  = srcMatch?.[1]?.trim() ?? 'Web';
-    const desc     = stripHtml(get('description')).slice(0, 150);
-    return [{ title, url: link, source: srcName, source_color: '#94a3b8', source_icon: '🌐', time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
-  });
-}
-
 async function fetchRSS(src: typeof RSS[number]): Promise<Article[]> {
   try {
     const res = await fetch(src.url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
@@ -198,19 +172,10 @@ async function fetchCryptoPanic(): Promise<Article[]> {
   } catch { return []; }
 }
 
-async function searchGoogleNews(query: string): Promise<Article[]> {
-  try {
-    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
-    return parseGoogleNewsRSS(await res.text());
-  } catch { return []; }
-}
-
 async function getTrends(): Promise<Article[]> {
   const settled = await Promise.allSettled([
     fetchCryptoPanic(),
     ...RSS.map(fetchRSS),
-    ...SEARCH_QUERIES.map(searchGoogleNews),
   ]);
   const all = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
   const seen = new Set<string>();
@@ -226,7 +191,9 @@ async function getTrends(): Promise<Article[]> {
 }
 
 // ── Prompts ────────────────────────────────────────────────────────────────
-const SYSTEM_INFLUENCER = `You write casual CT tweets for @UxGsol (88K crypto followers). Voice: @loshmi — chronically online, self-aware, dry humor.
+const SYSTEM_INFLUENCER = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
+
+You write casual CT tweets for @UxGsol (88K crypto followers). Voice: @loshmi — chronically online, self-aware, dry humor.
 
 Use today's actual crypto prices and events. React with dry humor — airdrops, memecoin psychology, NFT regrets, CT archetypes, seed phrase dramas, DeFi absurdities, BTC/ETH/SOL price reactions. But NEVER summarize news. Just vibe.
 
@@ -238,13 +205,14 @@ Style (mandatory):
 - punchline lands on the last line
 - NEVER start with capital letter
 
-CRITICAL: Keep each tweet under 80 words. Return valid complete JSON only. Do not truncate.
-You MUST return exactly 3 tweets in the JSON array with type "influencer_voice". No more, no less.
+You MUST return exactly 3 tweets in the JSON array with type "influencer_voice". No more, no less. Keep each tweet under 80 words.
 
-Return ONLY a valid JSON array, no markdown, no explanation:
+Output format (return this exact structure):
 [{"type":"influencer_voice","format":"Influencer Voice","is_thread":false,"reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0}]`;
 
-const SYSTEM_NEWS = `You write News Hook posts for @UxGsol (88K crypto followers).
+const SYSTEM_NEWS = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
+
+You write News Hook posts for @UxGsol (88K crypto followers).
 
 ONLY cover: hacks/exploits, rug pulls, memecoin/NFT drama, whale moves, airdrops, DeFi failures, arrests/lawsuits, prediction market chaos, ordinary people getting rich or ruined.
 SKIP entirely: price analysis, institutional adoption, regulatory updates, partnerships, ETF news.
@@ -259,10 +227,9 @@ Final line — consequence or question that demands a reply.
 Rules: lowercase, no links in text, zero fabricated details.
 source_url (exact article URL) and source_name (publication name) are REQUIRED on every tweet — never leave them empty.
 
-CRITICAL: Keep each post under 80 words. Return valid complete JSON only. Do not truncate.
-You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less.
+You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less. Keep each post under 80 words.
 
-Return ONLY a valid JSON array, no markdown, no explanation:
+Output format (return this exact structure):
 [{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
@@ -275,12 +242,15 @@ async function genInfluencerTweets(client: Anthropic, themes: string[], trends: 
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 600,
+    max_tokens: 1200,
     system: SYSTEM_INFLUENCER,
     messages: [{ role: 'user', content: `Today's crypto context — react to these naturally (prices, events, vibes):\n${trendContext}\n\nWrite exactly 3 Influencer Voice tweets. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}${perfLine}` }],
   });
 
-  const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
+  const textBlock = msg.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+  if (!textBlock) throw new Error(`Influencer: no text block in response (stop_reason: ${msg.stop_reason})`);
+  console.log('[Influencer] raw:', textBlock.text.slice(0, 300));
+  const tweets = parseJSON<Tweet[]>(textBlock.text);
   return tweets.slice(0, 3).map(t => ({ ...t, char_count: t.text.length }));
 }
 
@@ -294,12 +264,15 @@ async function genNewsHooks(trends: Article[], client: Anthropic, categories: st
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 600,
+    max_tokens: 1200,
     system: SYSTEM_NEWS,
     messages: [{ role: 'user', content: `Today's crypto news:\n\n${trendsText}\n\nPrioritise these categories:\n${categoriesText}\n\nWrite exactly 3 News Hook posts. Max 80 words each. Use article URL as source_url.${avoidLine}${perfLine}` }],
   });
 
-  const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
+  const textBlock = msg.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
+  if (!textBlock) throw new Error(`NewsHook: no text block in response (stop_reason: ${msg.stop_reason})`);
+  console.log('[NewsHook] raw:', textBlock.text.slice(0, 300));
+  const tweets = parseJSON<Tweet[]>(textBlock.text);
   return tweets.slice(0, 3).map(t => ({ ...t, char_count: t.text.length }));
 }
 

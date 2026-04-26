@@ -652,7 +652,6 @@ export default function Page() {
                     ['🧱', '#3b82f6', 'The Block',      'RSS'],
                     ['🔨', '#f59e0b', 'Blockworks',     'RSS'],
                     ['📡', '#06b6d4', 'CoinTelegraph',  'RSS'],
-                    ['🌐', '#94a3b8', 'Google News',    '5 shock-category searches'],
                   ].map(([icon, color, name, type]) => (
                     <div key={name as string} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
                       <span style={{ color: color as string }}>{icon}</span>
