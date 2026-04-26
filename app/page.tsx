@@ -94,9 +94,6 @@ export default function Page() {
   const [stats,        setStats]        = useState<FormatStats[]>([]);
   const [metricDraft,  setMetricDraft]  = useState<Record<string, { views: string; likes: string; replies: string; reposts: string }>>({});
   const [loading,      setLoading]      = useState(false);
-  const [stage,        setStage]        = useState(1);
-  const [stageMsg,     setStageMsg]     = useState('');
-  const [stageSub,     setStageSub]     = useState('');
   const [apiKeySet,    setApiKeySet]    = useState(false);
   const [toasts,       setToasts]       = useState<Toast[]>([]);
   const [saved,        setSaved]        = useState<Set<number>>(new Set());
@@ -174,59 +171,28 @@ export default function Page() {
   }, [metricDraft, toast]);
 
   const generateReport = useCallback(async () => {
-    setLoading(true); setStage(1);
-    setStageMsg('🔍 Scanning crypto news for wild stories...');
-    setStageSub('CryptoPanic · CoinDesk · Decrypt · The Defiant');
-    setSaved(new Set()); setSkipped(new Set()); setPosted(new Set());
+    setLoading(true);
 
-    const currentStats = computeFormatStats(loadPostedTweets());
-    const formatHint = currentStats[0]?.format ?? '';
-
-    // Collect recent tweet snippets to prevent topic repetition
-    const previousTopics = loadHistory()
-      .slice(0, 3)
-      .flatMap(r => r.tweets.map(t => t.text.slice(0, 70)));
+    const currentStats   = computeFormatStats(loadPostedTweets());
+    const formatHint     = currentStats[0]?.format ?? '';
+    const previousTopics = loadHistory().slice(0, 3).flatMap(r => r.tweets.map(t => t.text.slice(0, 70)));
 
     try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
+      const res  = await fetch('/api/generate', {
+        method:  'POST',
         headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format_hint: formatHint, previous_topics: previousTopics }),
+        body:    JSON.stringify({ format_hint: formatHint, previous_topics: previousTopics }),
       });
-      if (!res.ok) { const e = await res.json() as { error: string }; throw new Error(e.error); }
+      const data = await res.json() as Report & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
 
-      const reader = res.body!.getReader();
-      const dec = new TextDecoder();
-      let buf = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop() ?? '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const ev = JSON.parse(line.slice(6)) as Record<string, unknown>;
-            if (ev.type === 'progress') {
-              setStage((ev.stage as number) ?? 1);
-              setStageMsg((ev.message as string) ?? '');
-              setStageSub((ev.sub as string) ?? '');
-            } else if (ev.type === 'complete') {
-              const r = ev.data as Report;
-              setReport(r); saveReport(r);
-              setHistory(loadHistory());
-              toast('success', '✅ Report generated!');
-              setTab('today');
-            } else if (ev.type === 'error') {
-              throw new Error((ev.message as string) ?? 'Generation failed');
-            }
-          } catch (e) { if (e instanceof SyntaxError) continue; throw e; }
-        }
-      }
+      setReport(data); saveReport(data);
+      setHistory(loadHistory());
+      setSaved(new Set()); setSkipped(new Set()); setPosted(new Set());
+      toast('success', '✅ 6 tweets generated!');
+      setTab('today');
     } catch (e) {
-      toast('error', `❌ ${e instanceof Error ? e.message : 'Generation failed. Check API key.'}`);
+      toast('error', `❌ ${e instanceof Error ? e.message : 'Generation failed — check API key.'}`);
     } finally { setLoading(false); }
   }, [toast]);
 
@@ -243,13 +209,8 @@ export default function Page() {
       {loading && (
         <div className="loading-overlay">
           <div className="spinner" />
-          <div>
-            <div className="loading-stage">{stageMsg}</div>
-            <div className="loading-sub">{stageSub}</div>
-          </div>
-          <div className="stage-dots">
-            {[1, 2, 3].map(i => <div key={i} className={`stage-dot${i <= stage ? ' active' : ''}`} />)}
-          </div>
+          <div className="loading-stage">⚡ Generating 6 tweets...</div>
+          <div className="loading-sub">3× Influencer Voice · 3× News Hook · ~20 seconds</div>
         </div>
       )}
 
@@ -337,7 +298,7 @@ export default function Page() {
                 <div className="empty-state">
                   <div className="empty-icon">📡</div>
                   <div className="empty-title">No Report Generated Yet</div>
-                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 10 tweet drafts — 5 Influencer Voice (short &amp; punchy) + 5 News Hook (long-form thread posts).</div>
+                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 6 tweet drafts — 3 Influencer Voice + 3 News Hook.</div>
                   <button className="btn-primary" onClick={generateReport}>
                     <span>⚡</span> Generate Today&apos;s Report
                   </button>
