@@ -646,11 +646,13 @@ export default function Page() {
                 <div className="settings-title">News Sources</div>
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
-                    ['🔥', '#f97316', 'CryptoPanic',  'free API · important filter'],
-                    ['📰', '#10b981', 'CoinDesk',     'RSS'],
-                    ['🔐', '#6366f1', 'Decrypt',      'RSS'],
-                    ['⚡', '#8b5cf6', 'The Defiant',  'RSS'],
-                    ['📡', '#06b6d4', 'CoinTelegraph', 'RSS'],
+                    ['🔥', '#f97316', 'CryptoPanic',   'free API · important filter'],
+                    ['🔐', '#6366f1', 'Decrypt',        'RSS'],
+                    ['⚡', '#8b5cf6', 'The Defiant',    'RSS'],
+                    ['🧱', '#3b82f6', 'The Block',      'RSS'],
+                    ['🔨', '#f59e0b', 'Blockworks',     'RSS'],
+                    ['📡', '#06b6d4', 'CoinTelegraph',  'RSS'],
+                    ['🌐', '#94a3b8', 'Google News',    '5 shock-category searches'],
                   ].map(([icon, color, name, type]) => (
                     <div key={name as string} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
                       <span style={{ color: color as string }}>{icon}</span>

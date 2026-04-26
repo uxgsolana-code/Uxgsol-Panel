@@ -30,22 +30,24 @@ interface Tweet {
 // ── Rotation pools ─────────────────────────────────────────────────────────
 const NEWS_CATEGORIES = [
   'crypto hacks, exploits, and security breaches',
-  'absurd on-chain data — whale movements, bizarre transactions',
-  'government and regulatory crypto absurdity',
-  'crypto colliding with mainstream world in unexpected ways',
-  'DeFi protocol failures, funny liquidations',
-  'NFT and memecoin chaos — rugpulls, ridiculous valuations',
-  'macro economy meeting crypto in wild ways',
-  'AI and tech intersecting with crypto unexpectedly',
+  'memecoin and NFT drama — rug pulls, creator chaos, ridiculous valuations',
+  'whale moves and bizarre on-chain transactions',
+  'DeFi protocol failures, funny liquidations, drained protocols',
+  'prediction market bets — polymarket unusual or absurd positions',
+  'airdrop news, snapshot drama, eligibility chaos',
+  'crypto people arrested, indicted, or in legal trouble',
+  'ordinary people getting rich (or completely ruined) by crypto',
 ] as const;
 
 const INFLUENCER_THEMES = [
-  'trader psychology — irrational decisions, FOMO, vibes-based investing',
-  'the absurdity of daily crypto life — price checking, 3am decisions',
-  'web3 culture criticism — contradictions, hype, collective cope',
-  'money and wealth humor in crypto context',
-  'bear and bull market emotional rollercoaster',
-  'CT character archetypes — the "I called it" guy, exit-strategy guy',
+  'airdrop luck vs cope — "got it" vs "missed it because [absurd reason]"',
+  'memecoin cycle psychology — bro imagine buying X at bottom and selling at 2x',
+  'NFT bought vs never bought scenarios — the eternal regret or the lucky dodge',
+  'CT character archetypes — the "I called it" guy, exit-strategy guy, CT missionary',
+  'bull market vs bear market behavior — the personality flip',
+  'seed phrase and wallet dramas — losing access, paranoid backup stories',
+  'DeFi yield farming absurdities — chasing APY at 3am, impermanent loss cope',
+  'BTC/ETH/SOL price reactions — self-aware humor about being early or late',
 ] as const;
 
 function shuffle<T>(arr: readonly T[]): T[] {
@@ -66,16 +68,35 @@ function getDailyContext() {
 
 // ── RSS Sources ────────────────────────────────────────────────────────────
 const RSS = [
-  { name: 'CoinDesk',      url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', color: '#10b981', icon: '📰' },
   { name: 'Decrypt',       url: 'https://decrypt.co/feed',                          color: '#6366f1', icon: '🔐' },
   { name: 'The Defiant',   url: 'https://thedefiant.io/api/feeds/rss.xml',          color: '#8b5cf6', icon: '⚡' },
+  { name: 'The Block',     url: 'https://www.theblock.co/rss.xml',                  color: '#3b82f6', icon: '🧱' },
+  { name: 'Blockworks',    url: 'https://blockworks.co/feed',                        color: '#f59e0b', icon: '🔨' },
   { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss',                    color: '#06b6d4', icon: '📡' },
+] as const;
+
+// Google News search queries targeting shock/absurd content only
+const SEARCH_QUERIES = [
+  'crypto hack exploit today 2026',
+  'memecoin rug pull today 2026',
+  'crypto whale unusual transaction today',
+  'DeFi exploit drained today 2026',
+  'crypto arrested scam today 2026',
 ] as const;
 
 const SHOCK_KEYWORDS = [
   'hack', 'exploit', 'rug', 'scam', 'fraud', 'stolen', 'drain', 'crash',
-  'collapse', 'bankrupt', 'arrested', 'jail', 'billion', 'million', 'bug',
-  'breach', 'leaked', 'lawsuit', 'ban', 'seized', 'unusual', 'wild', 'lost',
+  'collapse', 'bankrupt', 'arrested', 'jail', 'bug', 'breach', 'leaked',
+  'lawsuit', 'ban', 'seized', 'lost', 'memecoin', 'meme coin', 'nft drama',
+  'whale', 'airdrop', 'drained', 'rugpull', 'rug pull', 'drama', 'indicted',
+  'convicted', 'scammed', 'hacked', 'wiped', 'liquidated', 'polymarket',
+];
+
+const BORING_KEYWORDS = [
+  'price analysis', 'technical analysis', 'institutional', 'etf approval',
+  'corporate adoption', 'partnership', 'regulation', 'compliance',
+  'quarterly report', 'annual report', 'market cap update', 'trading volume',
+  'strategic reserve', 'macro outlook', 'interest rate',
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -101,17 +122,19 @@ function shockScore(a: Article): number {
   return SHOCK_KEYWORDS.reduce((n, kw) => n + (text.includes(kw) ? 1 : 0), 0);
 }
 
+function boringScore(a: Article): number {
+  const text = (a.title + ' ' + a.summary).toLowerCase();
+  return BORING_KEYWORDS.reduce((n, kw) => n + (text.includes(kw) ? 1 : 0), 0);
+}
+
 function parseJSON<T>(raw: string): T {
   let s = raw.trim();
-  // Strip markdown code fences
   if (s.startsWith('```')) s = s.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
-  // Extract JSON array
   const match = s.match(/\[[\s\S]*\]/);
   if (match) s = match[0];
   try {
     return JSON.parse(s) as T;
   } catch {
-    // If truncated, try to close the array and parse partial results
     const partial = s.replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
     try {
       const result = JSON.parse(partial) as T;
@@ -133,6 +156,23 @@ function parseRSS(xml: string, src: { name: string; color: string; icon: string 
     const pub  = get('pubDate') || get('dc:date') || '';
     const desc = stripHtml(get('description')).slice(0, 150);
     return [{ title, url: link, source: src.name, source_color: src.color, source_icon: src.icon, time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
+  });
+}
+
+function parseGoogleNewsRSS(xml: string): Article[] {
+  const items = xml.match(/<item[^>]*>[\s\S]*?<\/item>/g) ?? [];
+  return items.slice(0, 3).flatMap(item => {
+    const get = (tag: string) =>
+      item.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'))?.[1]?.trim() ?? '';
+    const rawTitle = get('title');
+    if (!rawTitle) return [];
+    const title    = rawTitle.replace(/ - [^-]{1,50}$/, '').trim();
+    const link     = get('link') || get('guid') || '';
+    const pub      = get('pubDate') || '';
+    const srcMatch = item.match(/<source[^>]+>([^<]+)<\/source>/i);
+    const srcName  = srcMatch?.[1]?.trim() ?? 'Web';
+    const desc     = stripHtml(get('description')).slice(0, 150);
+    return [{ title, url: link, source: srcName, source_color: '#94a3b8', source_icon: '🌐', time_ago: pub ? timeAgo(pub) : 'recently', summary: desc }];
   });
 }
 
@@ -158,20 +198,37 @@ async function fetchCryptoPanic(): Promise<Article[]> {
   } catch { return []; }
 }
 
+async function searchGoogleNews(query: string): Promise<Article[]> {
+  try {
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+    return parseGoogleNewsRSS(await res.text());
+  } catch { return []; }
+}
+
 async function getTrends(): Promise<Article[]> {
-  const settled = await Promise.allSettled([fetchCryptoPanic(), ...RSS.map(fetchRSS)]);
+  const settled = await Promise.allSettled([
+    fetchCryptoPanic(),
+    ...RSS.map(fetchRSS),
+    ...SEARCH_QUERIES.map(searchGoogleNews),
+  ]);
   const all = settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
   const seen = new Set<string>();
   return all
-    .filter(a => { const k = a.title.toLowerCase().slice(0, 50); if (seen.has(k)) return false; seen.add(k); return true; })
-    .sort((a, b) => shockScore(b) - shockScore(a))
+    .filter(a => {
+      const k = a.title.toLowerCase().slice(0, 50);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => (shockScore(b) - boringScore(b) * 2) - (shockScore(a) - boringScore(a) * 2))
     .slice(0, 12);
 }
 
 // ── Prompts ────────────────────────────────────────────────────────────────
 const SYSTEM_INFLUENCER = `You write casual CT tweets for @UxGsol (88K crypto followers). Voice: @loshmi — chronically online, self-aware, dry humor.
 
-Use today's actual crypto prices and events for Influencer Voice tweets. React to them naturally — specific prices, events, vibes. But NEVER summarize news. Just vibe with what's happening.
+Use today's actual crypto prices and events. React with dry humor — airdrops, memecoin psychology, NFT regrets, CT archetypes, seed phrase dramas, DeFi absurdities, BTC/ETH/SOL price reactions. But NEVER summarize news. Just vibe.
 
 Style (mandatory):
 - all lowercase, always
@@ -189,7 +246,8 @@ Return ONLY a valid JSON array, no markdown, no explanation:
 
 const SYSTEM_NEWS = `You write News Hook posts for @UxGsol (88K crypto followers).
 
-Pick ONLY shocking, absurd, or wild stories. Ignore price action and boring news.
+ONLY cover: hacks/exploits, rug pulls, memecoin/NFT drama, whale moves, airdrops, DeFi failures, arrests/lawsuits, prediction market chaos, ordinary people getting rich or ruined.
+SKIP entirely: price analysis, institutional adoption, regulatory updates, partnerships, ETF news.
 
 Format per post (max 80 words):
 Line 1 — HOOK: most jaw-dropping true fact. "Wait, what?" energy.
@@ -205,7 +263,7 @@ CRITICAL: Keep each post under 80 words. Return valid complete JSON only. Do not
 You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less.
 
 Return ONLY a valid JSON array, no markdown, no explanation:
-[{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
+[{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
 async function genInfluencerTweets(client: Anthropic, themes: string[], trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
