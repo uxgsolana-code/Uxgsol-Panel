@@ -217,7 +217,7 @@ MANDATORY STYLE:
 - NEVER start with capital letter
 - NEVER mention specific prices, news events, or company names
 - NEVER sound like a newsletter or LinkedIn post
-- under 280 characters — count carefully
+- max 50 words — short and punchy, no padding
 
 Must end with something that triggers replies: a statement so accurate it hurts, or a question CT has strong opinions on.
 
@@ -237,7 +237,7 @@ const SYSTEM_NEWS = `You write long-form "News Hook" thread posts for @UxGsol (8
 
 Pick ONLY shocking, absurd, or genuinely wild stories. Ignore price action and boring adoption news.
 
-Each post is a LONG-FORM THREAD-STYLE DRAFT (400-700 characters):
+Each post is a LONG-FORM THREAD-STYLE DRAFT (max 300 words):
 
 Line 1 — HOOK: most jaw-dropping true fact. Pure "wait, what?" energy.
 
@@ -275,7 +275,7 @@ async function genInfluencerTweets(client: Anthropic, formatHint: string, themes
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 2000,
+    max_tokens: 1500,
     system: SYSTEM_INFLUENCER,
     messages: [{
       role: 'user',
@@ -300,7 +300,7 @@ async function genNewsHooks(trends: Article[], client: Anthropic, categories: st
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 4000,
+    max_tokens: 1500,
     system: SYSTEM_NEWS,
     messages: [{
       role: 'user',
