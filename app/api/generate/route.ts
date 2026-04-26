@@ -60,8 +60,8 @@ function shuffle<T>(arr: readonly T[]): T[] {
 
 function getDailyContext() {
   return {
-    newsCategories:   shuffle(NEWS_CATEGORIES).slice(0, 5),
-    influencerThemes: shuffle(INFLUENCER_THEMES),
+    newsCategories:   shuffle(NEWS_CATEGORIES).slice(0, 3),
+    influencerThemes: shuffle(INFLUENCER_THEMES).slice(0, 3),
   };
 }
 
@@ -237,7 +237,7 @@ const SYSTEM_NEWS = `You write long-form "News Hook" thread posts for @UxGsol (8
 
 Pick ONLY shocking, absurd, or genuinely wild stories. Ignore price action and boring adoption news.
 
-Each post is a LONG-FORM THREAD-STYLE DRAFT (max 300 words):
+Each post is a LONG-FORM THREAD-STYLE DRAFT (max 150 words):
 
 Line 1 — HOOK: most jaw-dropping true fact. Pure "wait, what?" energy.
 
@@ -267,22 +267,25 @@ Return ONLY a valid JSON array, no markdown:
 [{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra shocking detail to keep the story alive","text":"...","char_count":0,"reasoning":"..."}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
-async function genInfluencerTweets(client: Anthropic, formatHint: string, themes: string[]): Promise<Tweet[]> {
-  const themesText = themes.slice(0, 5).map((t, i) => `${i + 1}. ${t}`).join('\n');
+async function genInfluencerTweets(client: Anthropic, formatHint: string, themes: string[], prevTopics: string[]): Promise<Tweet[]> {
+  const themesText = themes.slice(0, 3).map((t, i) => `${i + 1}. ${t}`).join('\n');
   const hintLine = formatHint
     ? `\n\nPerformance data: "${formatHint}" gets the highest engagement — lean into that energy for at least one tweet.`
+    : '';
+  const avoidLine = prevTopics.length
+    ? `\n\nDo NOT repeat or reuse any of these topics from previous sessions:\n${prevTopics.map(t => `- "${t}"`).join('\n')}`
     : '';
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
+    max_tokens: 1000,
     system: SYSTEM_INFLUENCER,
     messages: [{
       role: 'user',
-      content: `Write 5 Influencer Voice tweets. No news, no current events. All lowercase. Under 280 chars each. One tweet per theme, in order:
+      content: `Write 3 Influencer Voice tweets. No news, no current events. All lowercase. Max 50 words each. One tweet per theme, in order:
 
 ${themesText}
-${hintLine}`,
+${hintLine}${avoidLine}`,
     }],
   });
 
@@ -292,19 +295,22 @@ ${hintLine}`,
   return tweets.map(t => ({ ...t, char_count: t.text.length }));
 }
 
-async function genNewsHooks(trends: Article[], client: Anthropic, categories: string[]): Promise<Tweet[]> {
-  const categoriesText = categories.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  const trendsText = trends.slice(0, 12).map((t, i) =>
-    `[${i + 1}] SOURCE: ${t.source} | URL: ${t.url || 'n/a'}\nHEADLINE: ${t.title}${t.summary ? `\nSUMMARY: ${t.summary.slice(0, 150)}` : ''}`
+async function genNewsHooks(trends: Article[], client: Anthropic, categories: string[], prevTopics: string[]): Promise<Tweet[]> {
+  const categoriesText = categories.slice(0, 3).map((c, i) => `${i + 1}. ${c}`).join('\n');
+  const trendsText = trends.slice(0, 10).map((t, i) =>
+    `[${i + 1}] SOURCE: ${t.source} | URL: ${t.url || 'n/a'}\nHEADLINE: ${t.title}${t.summary ? `\nSUMMARY: ${t.summary.slice(0, 120)}` : ''}`
   ).join('\n\n');
+  const avoidLine = prevTopics.length
+    ? `\n\nDo NOT write about topics covered in previous sessions:\n${prevTopics.map(t => `- "${t}"`).join('\n')}`
+    : '';
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
+    max_tokens: 1000,
     system: SYSTEM_NEWS,
     messages: [{
       role: 'user',
-      content: `Today's crypto news:\n\n${trendsText}\n\nFor THIS session, prioritise stories from these categories:\n${categoriesText}\n\nWrite 5 long-form News Hook thread posts. Match each to the best category above. Use the URL from the article in source_url. Follow hook → para 1 → para 2 → twist structure with blank lines between sections.`,
+      content: `Today's crypto news:\n\n${trendsText}\n\nFor THIS session, prioritise stories from these categories:\n${categoriesText}\n\nWrite 3 News Hook thread posts. Match each to the best category. Use the URL in source_url. Follow hook → para 1 → para 2 → twist structure with blank lines.${avoidLine}`,
     }],
   });
 
@@ -341,9 +347,11 @@ export async function POST(req: Request) {
   }
 
   let formatHint = '';
+  let previousTopics: string[] = [];
   try {
-    const body = await req.json() as { format_hint?: string };
-    formatHint = typeof body.format_hint === 'string' ? body.format_hint : '';
+    const body = await req.json() as { format_hint?: string; previous_topics?: string[] };
+    formatHint     = typeof body.format_hint === 'string'  ? body.format_hint      : '';
+    previousTopics = Array.isArray(body.previous_topics)   ? body.previous_topics  : [];
   } catch { /* no body — fine */ }
 
   const client = new Anthropic({ apiKey });
@@ -363,8 +371,8 @@ export async function POST(req: Request) {
 
         send({ type: 'progress', stage: 2, message: '🤖 Generating 10 tweets with Claude AI...', sub: '5× Influencer Voice · 5× News Hook thread · category rotation active...' });
         const [influencerTweets, newsHooks] = await Promise.all([
-          genInfluencerTweets(client, formatHint, context.influencerThemes),
-          genNewsHooks(safeTrends, client, context.newsCategories),
+          genInfluencerTweets(client, formatHint, context.influencerThemes, previousTopics),
+          genNewsHooks(safeTrends, client, context.newsCategories, previousTopics),
         ]);
         const tweets = [...influencerTweets, ...newsHooks];
         send({ type: 'tweets', data: tweets });

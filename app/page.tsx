@@ -182,11 +182,16 @@ export default function Page() {
     const currentStats = computeFormatStats(loadPostedTweets());
     const formatHint = currentStats[0]?.format ?? '';
 
+    // Collect recent tweet snippets to prevent topic repetition
+    const previousTopics = loadHistory()
+      .slice(0, 3)
+      .flatMap(r => r.tweets.map(t => t.text.slice(0, 70)));
+
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
         headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ format_hint: formatHint }),
+        body: JSON.stringify({ format_hint: formatHint, previous_topics: previousTopics }),
       });
       if (!res.ok) { const e = await res.json() as { error: string }; throw new Error(e.error); }
 
@@ -447,14 +452,49 @@ export default function Page() {
                   <div className="empty-desc">Generated reports are saved here automatically.</div>
                 </div>
               ) : (
-                <div>
-                  {history.map((r, i) => (
-                    <div key={i} className="history-card" onClick={() => viewHistoryReport(r)}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 15 }}>{r.date}</div>
-                        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>{r.tweets.length} tweets · {r.trends.length} trends · {fmtTime(r.generated_at)}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+                  {history.map((r, ri) => (
+                    <div key={ri}>
+                      {/* Date header */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>📅 {r.date}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.tweets.length} tweets · {fmtTime(r.generated_at)}</div>
+                        <button
+                          className="btn-action"
+                          style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 10px', background: 'rgba(124,58,237,.1)', color: '#a78bfa', border: '1px solid rgba(124,58,237,.2)' }}
+                          onClick={() => viewHistoryReport(r)}
+                        >
+                          View Full Report →
+                        </button>
                       </div>
-                      <div style={{ color: 'var(--primary)', fontSize: 18 }}>→</div>
+                      {/* Tweet list */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        {r.tweets.map((tw, ti) => {
+                          const isThread = tw.is_thread ?? tw.type === 'news_hook';
+                          return (
+                            <div key={ti} className="tweet-card" style={{ padding: '12px 14px' }}>
+                              <div className="tweet-header" style={{ marginBottom: 8 }}>
+                                <span className={fmtBadge(tw.format)}>{tw.format}</span>
+                                {isThread && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,.12)', border: '1px solid rgba(6,182,212,.25)', borderRadius: 5, padding: '2px 7px' }}>THREAD</span>
+                                )}
+                                <span className="tweet-char" style={{ marginLeft: 'auto' }}>{tw.char_count} chars</span>
+                              </div>
+                              <div className="tweet-body" style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{tw.text}</div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                                <button className="btn-action btn-copy" style={{ fontSize: 11 }} onClick={() => navigator.clipboard.writeText(tw.text).then(() => toast('success', '📋 Copied!')).catch(() => toast('error', 'Copy failed'))}>
+                                  📋 Copy
+                                </button>
+                                {tw.source_url && (
+                                  <a href={tw.source_url} target="_blank" rel="noopener noreferrer" className="btn-action" style={{ fontSize: 11, background: 'rgba(16,185,129,.12)', color: '#34d399', border: '1px solid rgba(16,185,129,.25)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                                    🔗 Source →
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   ))}
                 </div>
