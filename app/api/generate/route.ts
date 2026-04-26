@@ -166,7 +166,7 @@ Style: @0xSweep — real events, flowing prose, dry wit. No bullet points.
 Content: absurd money stories, fraud, bank errors, crypto dramas, unexpected wealth or ruin. Real events with names and approximate dates when available.
 Format: 200-250 words. Short paragraphs separated by blank lines (1-2 sentences each). Last sentence: twist or unexpected outcome that reframes everything.
 Use a timeless classic story OR a real event from the last 48 hours.
-If the story is from a specific article, include source_url (exact URL) and source_name (publication). For timeless stories with no single source, omit both.
+MUST provide source_url (exact article URL or Wikipedia/reference URL), source_name (publication or "Wikipedia"), source_date (e.g. "Apr 27" or year for timeless stories like "2021"). Never leave these empty.
 
 ═══ POST 2 — type "influencer_voice" ═══
 Style: chronically online CT voice — all lowercase, CT slang, self-aware humor.
@@ -189,13 +189,13 @@ Examples:
 Style: shocking, specific, story-driven prose.
 Content: the single most absurd or shocking crypto/tech story from the last 48 hours only.
 Format: 3-4 short paragraphs. Hook → detail → twist → question that demands a reply.
-REQUIRED: source_url (exact article URL), source_name (publication name), story_date (e.g. "Apr 27").
+REQUIRED: source_url (exact article URL), source_name (publication name), source_date (e.g. "Apr 27"). Never leave these empty.
 SKIP: price analysis, institutional adoption, partnerships, ETF approvals.
 
 You MUST return exactly 3 posts. No more, no less. max 250 words for story, max 2 lines for influencer, max 120 words for news_hook.
 
 Return this exact JSON structure:
-[{"type":"story","format":"Story","source_url":"https://... or empty","source_name":"Publication or empty","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0},{"type":"news_hook","format":"News Hook","story_date":"Apr 27","source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"16:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
+[{"type":"story","format":"Story","source_url":"https://...","source_name":"Publication","source_date":"Apr 27","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0},{"type":"news_hook","format":"News Hook","source_url":"https://...","source_name":"Decrypt","source_date":"Apr 27","reply_potential":"HIGH","best_time":"16:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
 async function genPosts(client: Anthropic, trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {

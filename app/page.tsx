@@ -8,7 +8,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet       { type: 'story' | 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning?: string; }
+interface Tweet       { type: 'story' | 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; source_date?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning?: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook' | 'story'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
@@ -376,12 +376,16 @@ export default function Page() {
                             </span>
                           )}
                           <span className={potBadge(tw.reply_potential)} style={{ fontSize: 9 }}>{potLabel(tw.reply_potential)}</span>
-                          {tw.story_date && tw.type === 'news_hook' && (
-                            <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(148,163,184,.08)', border: '1px solid rgba(148,163,184,.2)', borderRadius: 5, padding: '2px 7px' }}>📅 {tw.story_date}</span>
-                          )}
                           <span className="tweet-char">{isLong ? `${tw.char_count} chars` : `${tw.char_count}/280`}</span>
                         </div>
                         <div className="tweet-body" style={{ whiteSpace: 'pre-wrap', lineHeight: isStory ? 1.7 : isLong ? 1.65 : 1.5 }}>{tw.text}</div>
+                        {(tw.type === 'story' || tw.type === 'news_hook') && (tw.source_date || tw.story_date || tw.source_name) && (
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {(tw.source_date || tw.story_date) && <span>📅 {tw.source_date || tw.story_date}</span>}
+                            {(tw.source_date || tw.story_date) && tw.source_name && <span>·</span>}
+                            {tw.source_name && <span>{tw.source_name}</span>}
+                          </div>
+                        )}
                         {!isLong && (
                           <div className="char-bar-bg">
                             <div className="char-bar-fill" style={{ width: `${pct}%`, background: barColor(tw.char_count) }} />
@@ -465,12 +469,16 @@ export default function Page() {
                                 {isThread && (
                                   <span style={{ fontSize: 10, fontWeight: 700, color: '#06b6d4', background: 'rgba(6,182,212,.12)', border: '1px solid rgba(6,182,212,.25)', borderRadius: 5, padding: '2px 7px' }}>THREAD</span>
                                 )}
-                                {tw.story_date && tw.type === 'news_hook' && (
-                                  <span style={{ fontSize: 10, color: '#94a3b8', background: 'rgba(148,163,184,.08)', border: '1px solid rgba(148,163,184,.2)', borderRadius: 5, padding: '2px 7px' }}>📅 {tw.story_date}</span>
-                                )}
                                 <span className="tweet-char" style={{ marginLeft: 'auto' }}>{tw.char_count} chars</span>
                               </div>
                               <div className="tweet-body" style={{ fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{tw.text}</div>
+                              {(tw.type === 'story' || tw.type === 'news_hook') && (tw.source_date || tw.story_date || tw.source_name) && (
+                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  {(tw.source_date || tw.story_date) && <span>📅 {tw.source_date || tw.story_date}</span>}
+                                  {(tw.source_date || tw.story_date) && tw.source_name && <span>·</span>}
+                                  {tw.source_name && <span>{tw.source_name}</span>}
+                                </div>
+                              )}
                               <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                                 <button className="btn-action btn-copy" style={{ fontSize: 11 }} onClick={() => navigator.clipboard.writeText(tw.text).then(() => toast('success', '📋 Copied!')).catch(() => toast('error', 'Copy failed'))}>
                                   📋 Copy
