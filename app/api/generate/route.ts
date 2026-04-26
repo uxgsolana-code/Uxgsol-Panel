@@ -171,7 +171,7 @@ async function getTrends(): Promise<Article[]> {
 // ── Prompts ────────────────────────────────────────────────────────────────
 const SYSTEM_INFLUENCER = `You write casual CT tweets for @UxGsol (88K crypto followers). Voice: @loshmi — chronically online, self-aware, dry humor.
 
-No news. No current events. Timeless crypto life observations.
+Use today's actual crypto prices and events for Influencer Voice tweets. React to them naturally — specific prices, events, vibes. But NEVER summarize news. Just vibe with what's happening.
 
 Style (mandatory):
 - all lowercase, always
@@ -199,7 +199,7 @@ Body (2-3 lines): who, what, how, the twist.
 Final line — consequence or question that demands a reply.
 
 Rules: lowercase, no links in text, zero fabricated details.
-Set source_url to the article URL you used, source_name to publication name.
+source_url (exact article URL) and source_name (publication name) are REQUIRED on every tweet — never leave them empty.
 
 CRITICAL: Keep each post under 80 words. Return valid complete JSON only. Do not truncate.
 You MUST return exactly 3 tweets in the JSON array with type "news_hook". No more, no less.
@@ -208,34 +208,37 @@ Return ONLY a valid JSON array, no markdown, no explanation:
 [{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
-async function genInfluencerTweets(client: Anthropic, themes: string[], formatHint: string, prevTopics: string[]): Promise<Tweet[]> {
-  const themesText  = themes.map((t, i) => `${i + 1}. ${t}`).join('\n');
-  const hintLine    = formatHint ? `\nPerformance data: "${formatHint}" format gets the highest engagement.` : '';
-  const avoidLine   = prevTopics.length ? `\nDo NOT repeat these topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
+async function genInfluencerTweets(client: Anthropic, themes: string[], trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
+  const themesText    = themes.map((t, i) => `${i + 1}. ${t}`).join('\n');
+  const trendContext  = trends.slice(0, 6).map(t => `- ${t.title}`).join('\n');
+  const hintLine      = formatHint ? `\nPerformance data: "${formatHint}" format gets the highest engagement.` : '';
+  const avoidLine     = prevTopics.length ? `\nDo NOT repeat these topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
+  const perfLine      = perfExamples.length ? `\nTop-performing tweets from this account — match this tone and style:\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 600,
     system: SYSTEM_INFLUENCER,
-    messages: [{ role: 'user', content: `Write exactly 3 Influencer Voice tweets. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}` }],
+    messages: [{ role: 'user', content: `Today's crypto context — react to these naturally (prices, events, vibes):\n${trendContext}\n\nWrite exactly 3 Influencer Voice tweets. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}${perfLine}` }],
   });
 
   const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
   return tweets.slice(0, 3).map(t => ({ ...t, char_count: t.text.length }));
 }
 
-async function genNewsHooks(trends: Article[], client: Anthropic, categories: string[], prevTopics: string[]): Promise<Tweet[]> {
+async function genNewsHooks(trends: Article[], client: Anthropic, categories: string[], prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
   const categoriesText = categories.map((c, i) => `${i + 1}. ${c}`).join('\n');
   const trendsText = trends.slice(0, 8).map((t, i) =>
     `[${i + 1}] ${t.source} | URL: ${t.url || 'n/a'}\n${t.title}${t.summary ? `\n→ ${t.summary.slice(0, 100)}` : ''}`
   ).join('\n\n');
-  const avoidLine = prevTopics.length ? `\nDo NOT repeat topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
+  const avoidLine  = prevTopics.length ? `\nDo NOT repeat topics from previous sessions:\n${prevTopics.slice(0, 10).map(t => `- "${t}"`).join('\n')}` : '';
+  const perfLine   = perfExamples.length ? `\nTop-performing tweets from this account — match this engagement style:\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 600,
     system: SYSTEM_NEWS,
-    messages: [{ role: 'user', content: `Today's crypto news:\n\n${trendsText}\n\nPrioritise these categories:\n${categoriesText}\n\nWrite exactly 3 News Hook posts. Max 80 words each. Use article URL as source_url.${avoidLine}` }],
+    messages: [{ role: 'user', content: `Today's crypto news:\n\n${trendsText}\n\nPrioritise these categories:\n${categoriesText}\n\nWrite exactly 3 News Hook posts. Max 80 words each. Use article URL as source_url.${avoidLine}${perfLine}` }],
   });
 
   const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
@@ -265,10 +268,12 @@ export async function POST(req: Request) {
 
   let formatHint = '';
   let previousTopics: string[] = [];
+  let performanceExamples: string[] = [];
   try {
-    const body = await req.json() as { format_hint?: string; previous_topics?: string[] };
-    formatHint     = typeof body.format_hint      === 'string' ? body.format_hint      : '';
-    previousTopics = Array.isArray(body.previous_topics)       ? body.previous_topics  : [];
+    const body = await req.json() as { format_hint?: string; previous_topics?: string[]; performance_examples?: string[] };
+    formatHint          = typeof body.format_hint          === 'string' ? body.format_hint          : '';
+    previousTopics      = Array.isArray(body.previous_topics)           ? body.previous_topics      : [];
+    performanceExamples = Array.isArray(body.performance_examples)      ? body.performance_examples : [];
   } catch { /* no body */ }
 
   const client  = new Anthropic({ apiKey });
@@ -281,15 +286,15 @@ export async function POST(req: Request) {
       : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
 
     const [influencerFirst, newsFirst] = await Promise.all([
-      genInfluencerTweets(client, context.influencerThemes, formatHint, previousTopics),
-      genNewsHooks(safeTrends, client, context.newsCategories, previousTopics),
+      genInfluencerTweets(client, context.influencerThemes, safeTrends, formatHint, previousTopics, performanceExamples),
+      genNewsHooks(safeTrends, client, context.newsCategories, previousTopics, performanceExamples),
     ]);
     const influencerTweets = influencerFirst.length >= 3
       ? influencerFirst
-      : await genInfluencerTweets(client, context.influencerThemes, formatHint, previousTopics);
+      : await genInfluencerTweets(client, context.influencerThemes, safeTrends, formatHint, previousTopics, performanceExamples);
     const newsHooks = newsFirst.length >= 3
       ? newsFirst
-      : await genNewsHooks(safeTrends, client, context.newsCategories, previousTopics);
+      : await genNewsHooks(safeTrends, client, context.newsCategories, previousTopics, performanceExamples);
 
     const tweets = [...influencerTweets, ...newsHooks];
     const tip    = await genTip(safeTrends, tweets, client);

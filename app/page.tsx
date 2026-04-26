@@ -185,15 +185,24 @@ export default function Page() {
   const generateReport = useCallback(async () => {
     setLoading(true);
 
-    const currentStats   = computeFormatStats(loadPostedTweets());
+    const allPosted      = loadPostedTweets();
+    const currentStats   = computeFormatStats(allPosted);
     const formatHint     = currentStats[0]?.format ?? '';
     const previousTopics = loadHistory().slice(0, 3).flatMap(r => r.tweets.map(t => t.text.slice(0, 70)));
+    const performanceExamples = allPosted
+      .filter(t => t.views > 0)
+      .sort((a, b) =>
+        ((b.likes + b.replies + b.reposts) / (b.views || 1)) -
+        ((a.likes + a.replies + a.reposts) / (a.views || 1))
+      )
+      .slice(0, 3)
+      .map(t => t.text.slice(0, 100));
 
     try {
       const res  = await fetch('/api/generate', {
         method:  'POST',
         headers: { ...AUTH_HEADERS, 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ format_hint: formatHint, previous_topics: previousTopics }),
+        body:    JSON.stringify({ format_hint: formatHint, previous_topics: previousTopics, performance_examples: performanceExamples }),
       });
       const data = await res.json() as Report & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`);
