@@ -103,10 +103,22 @@ function shockScore(a: Article): number {
 
 function parseJSON<T>(raw: string): T {
   let s = raw.trim();
+  // Strip markdown code fences
   if (s.startsWith('```')) s = s.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
+  // Extract JSON array
   const match = s.match(/\[[\s\S]*\]/);
   if (match) s = match[0];
-  return JSON.parse(s) as T;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    // If truncated, try to close the array and parse partial results
+    const partial = s.replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
+    try {
+      const result = JSON.parse(partial) as T;
+      if (Array.isArray(result) && result.length > 0) return result;
+    } catch { /* fall through */ }
+    throw new Error(`Claude response was cut off — try again (JSON parse failed at length ${s.length})`);
+  }
 }
 
 // ── Scraping ───────────────────────────────────────────────────────────────
@@ -167,30 +179,31 @@ Style (mandatory):
 - CT slang: ngl, bro, imagine, no way, gm, ngmi, the audacity
 - emoji as punchline only, max 1: 💀 😭 🙏
 - punchline lands on the last line
-- max 50 words per tweet
-- never start with capital letter
+- NEVER start with capital letter
 
-Must trigger replies — statement so accurate it hurts, or a question CT has strong opinions on.
+CRITICAL: Keep each tweet under 80 words. Return valid complete JSON only. Do not truncate.
 
-Return ONLY valid JSON array, no markdown:
-[{"type":"influencer_voice","format":"Influencer Voice","is_thread":false,"source_url":"","source_name":"","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min with a self-aware follow-up","text":"...","char_count":0,"reasoning":"..."}]`;
+Return ONLY a valid JSON array, no markdown, no explanation:
+[{"type":"influencer_voice","format":"Influencer Voice","is_thread":false,"reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0}]`;
 
-const SYSTEM_NEWS = `You write News Hook thread posts for @UxGsol (88K crypto followers).
+const SYSTEM_NEWS = `You write News Hook posts for @UxGsol (88K crypto followers).
 
 Pick ONLY shocking, absurd, or wild stories. Ignore price action and boring news.
 
-Format per post (max 100 words):
+Format per post (max 80 words):
 Line 1 — HOOK: most jaw-dropping true fact. "Wait, what?" energy.
 [blank line]
 Body (2-3 lines): who, what, how, the twist.
 [blank line]
 Final line — consequence or question that demands a reply.
 
-Rules: lowercase, no links in text, zero fabricated details, CT energy.
-Set source_url to the article URL you used.
+Rules: lowercase, no links in text, zero fabricated details.
+Set source_url to the article URL you used, source_name to publication name.
 
-Return ONLY valid JSON array, no markdown:
-[{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra shocking detail","text":"...","char_count":0,"reasoning":"..."}]`;
+CRITICAL: Keep each post under 80 words. Return valid complete JSON only. Do not truncate.
+
+Return ONLY a valid JSON array, no markdown, no explanation:
+[{"type":"news_hook","format":"News Hook","is_thread":true,"source_url":"https://...","source_name":"CoinDesk","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
 async function genInfluencerTweets(client: Anthropic, themes: string[], formatHint: string, prevTopics: string[]): Promise<Tweet[]> {
@@ -200,9 +213,9 @@ async function genInfluencerTweets(client: Anthropic, themes: string[], formatHi
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 600,
     system: SYSTEM_INFLUENCER,
-    messages: [{ role: 'user', content: `Write exactly 3 Influencer Voice tweets. All lowercase. Max 50 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}` }],
+    messages: [{ role: 'user', content: `Write exactly 3 Influencer Voice tweets. All lowercase. Max 80 words each. One tweet per theme:\n${themesText}${hintLine}${avoidLine}` }],
   });
 
   const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
@@ -218,9 +231,9 @@ async function genNewsHooks(trends: Article[], client: Anthropic, categories: st
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 800,
+    max_tokens: 600,
     system: SYSTEM_NEWS,
-    messages: [{ role: 'user', content: `Today's crypto news:\n\n${trendsText}\n\nPrioritise these categories:\n${categoriesText}\n\nWrite exactly 3 News Hook posts. Max 100 words each. Use article URL as source_url.${avoidLine}` }],
+    messages: [{ role: 'user', content: `Today's crypto news:\n\n${trendsText}\n\nPrioritise these categories:\n${categoriesText}\n\nWrite exactly 3 News Hook posts. Max 80 words each. Use article URL as source_url.${avoidLine}` }],
   });
 
   const tweets = parseJSON<Tweet[]>((msg.content[0] as { type: 'text'; text: string }).text);
