@@ -8,7 +8,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
-interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
+interface Tweet       { type: 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
 interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
@@ -417,6 +417,17 @@ export default function Page() {
                           >
                             {posted.has(i) ? '✓ Posted' : '📤 Mark as Posted'}
                           </button>
+                          {tw.source_url && (
+                            <a
+                              href={tw.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn-action"
+                              style={{ background: 'rgba(16,185,129,.12)', color: '#34d399', border: '1px solid rgba(16,185,129,.25)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                            >
+                              🔗 {tw.source_name ? `Read ${tw.source_name}` : 'Read Source'} →
+                            </a>
+                          )}
                           <button className="btn-action btn-skip" onClick={() => setSkipped(p => new Set(p).add(i))}>✕ Skip</button>
                         </div>
                       </div>
