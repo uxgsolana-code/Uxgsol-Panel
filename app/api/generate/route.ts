@@ -166,15 +166,24 @@ Style: @0xSweep — real events, flowing prose, dry wit. No bullet points.
 Content: absurd money stories, fraud, bank errors, crypto dramas, unexpected wealth or ruin. Real events with names and approximate dates when available.
 Format: 200-250 words. Short paragraphs separated by blank lines (1-2 sentences each). Last sentence: twist or unexpected outcome that reframes everything.
 Use a timeless classic story OR a real event from the last 48 hours.
+If the story is from a specific article, include source_url (exact URL) and source_name (publication). For timeless stories with no single source, omit both.
 
 ═══ POST 2 — type "influencer_voice" ═══
 Style: chronically online CT voice — all lowercase, CT slang, self-aware humor.
-Content: react to today's crypto prices or events. Relatable. End with something that gets replies.
-Format: max 2 lines, 1 emoji max as punchline.
+Content: IGNORE the crypto news above. Generate from universal crypto culture observations only — no news references.
+Topics (pick one):
+- BTC/ETH/SOL price psychology — reactions to price moves, selling too early, buying too late
+- Bull/bear market personality flips — how people change depending on the market
+- Airdrop and memecoin culture — FOMO, eligibility drama, degens
+- Daily crypto trader absurdities — price checking, 3am decisions, portfolio refreshes
+- "Bro imagine..." scenarios — relatable hypotheticals
+- CT character archetypes — the "I called it" guy, the permabull, the permabear
+Format: max 2 lines, 1 emoji max as punchline, ends with something reply-worthy.
 Examples:
-"imagine selling BTC at 60k because you 'took profits' 💀"
+"still holding bags from 2021 but at least i know what a seed phrase is now"
+"the audacity of asking 'is it a good time to buy' during a bull market AND a bear market"
+"imagine explaining impermanent loss to your girlfriend 💀"
 "bro explained DeFi to his dad. his dad bought a memecoin. it 10x'd. bro is still in the red 💀"
-"the guy who told me crypto was dead in 2022 just asked me which wallet to use"
 
 ═══ POST 3 — type "news_hook" ═══
 Style: shocking, specific, story-driven prose.
@@ -186,7 +195,7 @@ SKIP: price analysis, institutional adoption, partnerships, ETF approvals.
 You MUST return exactly 3 posts. No more, no less. max 250 words for story, max 2 lines for influencer, max 120 words for news_hook.
 
 Return this exact JSON structure:
-[{"type":"story","format":"Story","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0},{"type":"news_hook","format":"News Hook","story_date":"Apr 27","source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"16:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
+[{"type":"story","format":"Story","source_url":"https://... or empty","source_name":"Publication or empty","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0},{"type":"news_hook","format":"News Hook","story_date":"Apr 27","source_url":"https://...","source_name":"Decrypt","reply_potential":"HIGH","best_time":"16:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
 async function genPosts(client: Anthropic, trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
