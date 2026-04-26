@@ -179,12 +179,15 @@ Rules:
 Return ONLY a valid JSON array with exactly 3 tweets, no markdown:
 [{"type":"news_hook","format":"News Hook","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min with one extra detail or a shocked reaction to keep the story alive","text":"...","char_count":0,"reasoning":"..."}]`;
 
-async function genInfluencerTweets(client: Anthropic): Promise<Tweet[]> {
+async function genInfluencerTweets(client: Anthropic, formatHint = ''): Promise<Tweet[]> {
+  const hintLine = formatHint
+    ? `\n\nPerformance data from past posts shows "${formatHint}" gets the highest engagement for this account — lean into that energy for at least one of the 2 tweets.`
+    : '';
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1200,
     system: SYSTEM_INFLUENCER,
-    messages: [{ role: 'user', content: 'Write 2 Influencer Voice tweets now. Remember: no news, no current events, pure CT culture humor. All lowercase. Punchline at the end.' }],
+    messages: [{ role: 'user', content: `Write 2 Influencer Voice tweets now. No news, no current events, pure CT culture humor. All lowercase. Punchline at the end.${hintLine}` }],
   });
   let raw = (msg.content[0] as { type: 'text'; text: string }).text.trim();
   if (raw.startsWith('```')) raw = raw.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
@@ -231,6 +234,13 @@ export async function POST(req: Request) {
     return Response.json({ error: 'ANTHROPIC_API_KEY not set. Add it in Vercel Dashboard → Settings → Environment Variables, then Redeploy.' }, { status: 400 });
   }
 
+  // Read optional format_hint from request body
+  let formatHint = '';
+  try {
+    const body = await req.json() as { format_hint?: string };
+    formatHint = typeof body.format_hint === 'string' ? body.format_hint : '';
+  } catch { /* no body or non-JSON — fine */ }
+
   const client = new Anthropic({ apiKey });
   const enc = new TextEncoder();
 
@@ -245,9 +255,8 @@ export async function POST(req: Request) {
         send({ type: 'trends', data: safeTrends });
 
         send({ type: 'progress', stage: 2, message: '🤖 Generating tweets with Claude AI...', sub: 'Influencer Voice (no news) + News Hook (wildest stories)...' });
-        // Run both generation calls in parallel — they're fully independent
         const [influencerTweets, newsHooks] = await Promise.all([
-          genInfluencerTweets(client),
+          genInfluencerTweets(client, formatHint),
           genNewsHooks(safeTrends, client),
         ]);
         const tweets = [...influencerTweets, ...newsHooks];
