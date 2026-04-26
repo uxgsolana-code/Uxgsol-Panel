@@ -10,7 +10,7 @@ const AUTH_HEADERS: Record<string, string> = GUARD_TOKEN ? { 'x-guard-token': GU
 interface Trend       { title: string; url: string; source: string; source_color: string; source_icon: string; time_ago: string; summary: string; }
 interface Tweet       { type: 'story' | 'influencer_voice' | 'news_hook'; format: string; is_thread?: boolean; source_url?: string; source_name?: string; story_date?: string; reply_potential: 'HIGH' | 'MEDIUM' | 'LOW'; best_time: string; reply_strategy: string; text: string; char_count: number; reasoning?: string; }
 interface Report      { date: string; generated_at: string; trends: Trend[]; tweets: Tweet[]; tip: string; }
-interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook'; views: number; likes: number; replies: number; reposts: number; }
+interface PostedTweet { id: string; posted_at: string; text: string; format: string; type: 'influencer_voice' | 'news_hook' | 'story'; views: number; likes: number; replies: number; reposts: number; }
 interface FormatStats { format: string; type: string; count: number; avg_views: number; avg_likes: number; avg_replies: number; avg_reposts: number; eng_rate: number; }
 interface Toast       { id: number; type: 'success' | 'error' | 'info'; message: string; }
 
