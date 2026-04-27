@@ -23,8 +23,8 @@ function loadHistory(): Report[] {
 }
 function saveReport(r: Report) {
   try {
-    const prev = loadHistory().filter(x => x.date !== r.date);
-    localStorage.setItem(KEY, JSON.stringify([r, ...prev].slice(0, 30)));
+    const prev = loadHistory();
+    localStorage.setItem(KEY, JSON.stringify([r, ...prev].slice(0, 50)));
   } catch {}
 }
 function loadPostedTweets(): PostedTweet[] {
@@ -147,6 +147,23 @@ export default function Page() {
     toast('success', '📤 Marked as posted! Add metrics in My Tweets.');
   }, [toast]);
 
+  const markHistoryAsPosted = useCallback((tw: Tweet) => {
+    if (postedTweets.some(pt => pt.text === tw.text)) {
+      toast('info', 'Already in My Tweets.');
+      return;
+    }
+    const pt: PostedTweet = {
+      id: uid(), posted_at: new Date().toISOString(),
+      text: tw.text, format: tw.format, type: tw.type,
+      views: 0, likes: 0, replies: 0, reposts: 0,
+    };
+    savePostedTweet(pt);
+    const updated = loadPostedTweets();
+    setPostedTweets(updated);
+    setStats(computeFormatStats(updated));
+    toast('success', '📤 Added to My Tweets!');
+  }, [postedTweets, toast]);
+
   const initMetricDraft = useCallback((tw: PostedTweet) => {
     setMetricDraft(p => ({
       ...p,
@@ -232,7 +249,7 @@ export default function Page() {
         <div className="loading-overlay">
           <div className="spinner" />
           <div className="loading-stage">⚡ Generating 3 posts...</div>
-          <div className="loading-sub">1× Story · 1× Influencer Voice · 1× News Hook · ~20 seconds</div>
+          <div className="loading-sub">2× Story · 1× Influencer Voice · ~20 seconds</div>
         </div>
       )}
 
@@ -320,7 +337,7 @@ export default function Page() {
                 <div className="empty-state">
                   <div className="empty-icon">📡</div>
                   <div className="empty-title">No Report Generated Yet</div>
-                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 3 posts — 1 Story · 1 Influencer Voice · 1 News Hook.</div>
+                  <div className="empty-desc">Click &quot;Generate Report&quot; to scan today&apos;s crypto trends and create 3 posts — 2× Story · 1× Influencer Voice.</div>
                   <button className="btn-primary" onClick={generateReport}>
                     <span>⚡</span> Generate Today&apos;s Report
                   </button>
@@ -448,8 +465,8 @@ export default function Page() {
                     <div key={ri}>
                       {/* Date header */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-                        <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>📅 {r.date}</div>
-                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.tweets.length} tweets · {fmtTime(r.generated_at)}</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: '#a78bfa' }}>📊 Generate #{history.length - ri} — {fmtDate(r.generated_at)}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{r.tweets.length} posts</div>
                         <button
                           className="btn-action"
                           style={{ marginLeft: 'auto', fontSize: 11, padding: '3px 10px', background: 'rgba(124,58,237,.1)', color: '#a78bfa', border: '1px solid rgba(124,58,237,.2)' }}
@@ -479,9 +496,17 @@ export default function Page() {
                                   {tw.source_name && <span>{tw.source_name}</span>}
                                 </div>
                               )}
-                              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                                 <button className="btn-action btn-copy" style={{ fontSize: 11 }} onClick={() => navigator.clipboard.writeText(tw.text).then(() => toast('success', '📋 Copied!')).catch(() => toast('error', 'Copy failed'))}>
                                   📋 Copy
+                                </button>
+                                <button
+                                  className="btn-action"
+                                  disabled={postedTweets.some(pt => pt.text === tw.text)}
+                                  style={{ fontSize: 11, background: postedTweets.some(pt => pt.text === tw.text) ? 'rgba(34,197,94,.15)' : 'rgba(99,102,241,.15)', color: postedTweets.some(pt => pt.text === tw.text) ? '#4ade80' : '#818cf8', border: `1px solid ${postedTweets.some(pt => pt.text === tw.text) ? 'rgba(34,197,94,.3)' : 'rgba(99,102,241,.3)'}` }}
+                                  onClick={() => markHistoryAsPosted(tw)}
+                                >
+                                  {postedTweets.some(pt => pt.text === tw.text) ? '✓ Posted' : '📤 Mark as Posted'}
                                 </button>
                                 {tw.source_url && (
                                   <a href={tw.source_url} target="_blank" rel="noopener noreferrer" className="btn-action" style={{ fontSize: 11, background: 'rgba(16,185,129,.12)', color: '#34d399', border: '1px solid rgba(16,185,129,.25)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
