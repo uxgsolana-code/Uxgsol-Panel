@@ -19,7 +19,7 @@ interface Tweet {
   format: string;
   source_url?: string;
   source_name?: string;
-  story_date?: string;
+  source_date?: string;
   reply_potential: 'HIGH' | 'MEDIUM' | 'LOW';
   best_time: string;
   reply_strategy: string;
@@ -27,12 +27,36 @@ interface Tweet {
   char_count: number;
 }
 
+// ── Rotation pools ─────────────────────────────────────────────────────────
+const STORY_CATEGORIES = [
+  'crypto exchange hack, protocol exploit, or wallet drain with dramatic consequences',
+  'memecoin or NFT drama — rug pulls, ridiculous valuations, creator meltdowns',
+  'prediction market absurdity — wild bets, unexpected outcomes, market manipulation',
+  'unexpected wealth — ordinary people who accidentally got rich from crypto or tech',
+  'crypto arrests, indictments, or court cases — founders, traders, hackers',
+  'fintech or startup scandal — fundraising fraud, executive betrayal, collapse',
+] as const;
+
+function shuffle<T>(arr: readonly T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function getDailyContext() {
+  const cats = shuffle(STORY_CATEGORIES);
+  return { storyCategory1: cats[0], storyCategory2: cats[1] };
+}
+
 // ── RSS Sources ────────────────────────────────────────────────────────────
 const RSS = [
   { name: 'Decrypt',       url: 'https://decrypt.co/feed',                         color: '#6366f1', icon: '🔐' },
   { name: 'The Defiant',   url: 'https://thedefiant.io/api/feeds/rss.xml',         color: '#8b5cf6', icon: '⚡' },
   { name: 'The Block',     url: 'https://www.theblock.co/rss.xml',                 color: '#3b82f6', icon: '🧱' },
-  { name: 'Blockworks',    url: 'https://blockworks.co/feed',                       color: '#f59e0b', icon: '🔨' },
+  { name: 'Blockworks',    url: 'https://blockworks.co/feed',                      color: '#f59e0b', icon: '🔨' },
   { name: 'CoinTelegraph', url: 'https://cointelegraph.com/rss',                   color: '#06b6d4', icon: '📡' },
 ] as const;
 
@@ -159,76 +183,130 @@ async function getTrends(): Promise<Article[]> {
 // ── Prompt ─────────────────────────────────────────────────────────────────
 const SYSTEM_POSTS = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
 
+You have access to the web_search tool. BEFORE writing any Story post, search the web for real recent events.
+
+Suggested search queries (run before writing stories):
+- "crypto hack exploit 2026"
+- "DeFi protocol drained April 2026"
+- "memecoin rug pull creator 2026"
+- "crypto fraud arrested indicted 2025 2026"
+- "prediction market absurd bet 2026"
+- "crypto millionaire overnight 2025 2026"
+- "fintech startup collapse fraud 2025 2026"
+
+STRICT SOURCE RULES:
+- ONLY use events from 2025 or 2026
+- NEVER use Wikipedia or any encyclopedia
+- NEVER invent or hallucinate events — only write what you found in real search results
+- NEVER use events older than 12 months from today
+- source_url MUST be a real article URL from your search results
+- source_name is the publication (e.g. "CoinDesk", "Decrypt", "Reuters")
+- source_date is the event date (e.g. "Apr 15, 2026")
+
 Generate exactly 3 posts for @UxGsol (88K crypto followers) in this exact order:
 
 ═══ POST 1 — type "story" ═══
 Style: @0xSweep — real events, flowing prose, dry wit. No bullet points.
-Content: absurd money stories, fraud, bank errors, crypto dramas, unexpected wealth or ruin. Real events with names and approximate dates when available.
-Format: 200-250 words. Short paragraphs separated by blank lines (1-2 sentences each). Last sentence: twist or unexpected outcome that reframes everything.
-Use a timeless classic story OR a real event from the last 48 hours.
-MUST provide source_url (exact article URL or Wikipedia/reference URL), source_name (publication or "Wikipedia"), source_date (e.g. "Apr 27" or year for timeless stories like "2021"). Never leave these empty.
+Content: real story from the assigned category. Find a specific 2025-2026 event with real names, exact dollar amounts, and dates from your search.
+Format: 200-250 words. Short paragraphs separated by blank lines (1-2 sentences each). Last sentence: twist or unexpected outcome.
+MUST provide: source_url, source_name, source_date.
 
-═══ POST 2 — type "influencer_voice" ═══
+═══ POST 2 — type "story" ═══
+Style and format: identical to Post 1.
+Content: real story from the SECOND assigned category. Completely different topic from Post 1. Use web search.
+MUST provide: source_url, source_name, source_date.
+
+═══ POST 3 — type "influencer_voice" ═══
 Style: chronically online CT voice — all lowercase, CT slang, self-aware humor.
-Content: IGNORE the crypto news above. Generate from universal crypto culture observations only — no news references.
-Topics (pick one):
-- BTC/ETH/SOL price psychology — reactions to price moves, selling too early, buying too late
-- Bull/bear market personality flips — how people change depending on the market
-- Airdrop and memecoin culture — FOMO, eligibility drama, degens
-- Daily crypto trader absurdities — price checking, 3am decisions, portfolio refreshes
-- "Bro imagine..." scenarios — relatable hypotheticals
-- CT character archetypes — the "I called it" guy, the permabull, the permabear
-Format: max 2 lines, 1 emoji max as punchline, ends with something reply-worthy.
-Examples:
-"still holding bags from 2021 but at least i know what a seed phrase is now"
-"the audacity of asking 'is it a good time to buy' during a bull market AND a bear market"
-"imagine explaining impermanent loss to your girlfriend 💀"
-"bro explained DeFi to his dad. his dad bought a memecoin. it 10x'd. bro is still in the red 💀"
+Content: IGNORE news and search results entirely. Pick one universal crypto experience:
+  BTC/ETH/SOL price psychology · bull/bear personality flips · airdrop/memecoin culture
+  daily trader absurdities · "bro imagine" scenarios · CT character archetypes
+Format: max 2 lines, 1 emoji max as punchline, ends reply-worthy.
+Examples: "still holding bags from 2021 but at least i know what a seed phrase is now"
+         "the audacity of asking 'is it a good time to buy' during a bull market AND a bear market"
+         "imagine explaining impermanent loss to your girlfriend 💀"
 
-═══ POST 3 — type "news_hook" ═══
-Style: shocking, specific, story-driven prose.
-Content: the single most absurd or shocking crypto/tech story from the last 48 hours only.
-Format: 3-4 short paragraphs. Hook → detail → twist → question that demands a reply.
-REQUIRED: source_url (exact article URL), source_name (publication name), source_date (e.g. "Apr 27"). Never leave these empty.
-SKIP: price analysis, institutional adoption, partnerships, ETF approvals.
-
-You MUST return exactly 3 posts. No more, no less. max 250 words for story, max 2 lines for influencer, max 120 words for news_hook.
+You MUST return exactly 3 posts. No more, no less.
 
 Return this exact JSON structure:
-[{"type":"story","format":"Story","source_url":"https://...","source_name":"Publication","source_date":"Apr 27","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0},{"type":"news_hook","format":"News Hook","source_url":"https://...","source_name":"Decrypt","source_date":"Apr 27","reply_potential":"HIGH","best_time":"16:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0}]`;
+[{"type":"story","format":"Story","source_url":"https://...","source_name":"Publication","source_date":"Apr 27, 2026","reply_potential":"HIGH","best_time":"14:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"story","format":"Story","source_url":"https://...","source_name":"Publication","source_date":"Apr 27, 2026","reply_potential":"HIGH","best_time":"18:00 UTC","reply_strategy":"Reply within 15 min","text":"...","char_count":0},{"type":"influencer_voice","format":"Influencer Voice","reply_potential":"HIGH","best_time":"12:00 UTC","reply_strategy":"Reply within 10 min","text":"...","char_count":0}]`;
 
 // ── Generation ─────────────────────────────────────────────────────────────
-async function genPosts(client: Anthropic, trends: Article[], formatHint: string, prevTopics: string[], perfExamples: string[]): Promise<Tweet[]> {
-  const trendsText = trends.slice(0, 8).map((t, i) => {
+async function genPosts(
+  client: Anthropic,
+  trends: Article[],
+  storyCategory1: string,
+  storyCategory2: string,
+  formatHint: string,
+  prevTopics: string[],
+  perfExamples: string[]
+): Promise<Tweet[]> {
+  const trendsText = trends.slice(0, 6).map((t, i) => {
     const dateLabel = t.published_at
       ? (() => { try { return new Date(t.published_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return ''; } })()
       : '';
-    return `[${i + 1}] ${t.source}${dateLabel ? ` | ${dateLabel}` : ''} | URL: ${t.url || 'n/a'}\n${t.title}${t.summary ? `\n→ ${t.summary.slice(0, 100)}` : ''}`;
-  }).join('\n\n');
+    return `[${i + 1}] ${t.source}${dateLabel ? ` | ${dateLabel}` : ''}\n${t.title}`;
+  }).join('\n');
 
-  const hintLine  = formatHint    ? `\nBest performing format from analytics: "${formatHint}".` : '';
-  const avoidLine = prevTopics.length ? `\nDo NOT repeat these recent topics:\n${prevTopics.slice(0, 8).map(t => `- "${t}"`).join('\n')}` : '';
-  const perfLine  = perfExamples.length ? `\nTop-performing posts (match this tone):\n${perfExamples.map(e => `"${e}"`).join('\n')}` : '';
+  const hintLine  = formatHint         ? `\nBest performing format: "${formatHint}".`                                                              : '';
+  const avoidLine = prevTopics.length  ? `\nDo NOT repeat these recent story topics:\n${prevTopics.slice(0, 8).map(t => `- "${t}"`).join('\n')}` : '';
+  const perfLine  = perfExamples.length ? `\nTop-performing posts (match this tone):\n${perfExamples.map(e => `"${e}"`).join('\n')}`             : '';
 
-  const msg = await client.messages.create({
-    model:      'claude-sonnet-4-6',
-    max_tokens: 1500,
-    system:     SYSTEM_POSTS,
-    messages:   [{ role: 'user', content: `Today's crypto news (use for influencer voice + news hook):\n\n${trendsText}\n\nGenerate all 3 posts now.${hintLine}${avoidLine}${perfLine}` }],
-  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webSearchTool = { type: 'web_search_20250305', name: 'web_search' } as any;
 
-  const textBlock = msg.content.find(b => b.type === 'text') as { type: 'text'; text: string } | undefined;
-  if (!textBlock) throw new Error(`No text block in response (stop_reason: ${msg.stop_reason})`);
-  console.log('[genPosts] raw:', textBlock.text.slice(0, 400));
-  const posts = parseJSON<Tweet[]>(textBlock.text);
+  const messages: Anthropic.Messages.MessageParam[] = [{
+    role: 'user',
+    content: `Today's crypto context (for influencer voice post only):\n${trendsText}\n\nStory 1 category: ${storyCategory1}\nStory 2 category: ${storyCategory2}\n\nSearch the web for recent (2025-2026) real events for each story category, then generate all 3 posts.${hintLine}${avoidLine}${perfLine}`,
+  }];
+
+  let msg: Anthropic.Messages.Message | undefined;
+
+  // Tool-use loop — web_search_20250305 is Anthropic-hosted; typically resolves in 1-2 turns
+  for (let turn = 0; turn < 5; turn++) {
+    msg = await client.messages.create({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2000,
+      system:     SYSTEM_POSTS,
+      tools:      [webSearchTool],
+      messages,
+    });
+
+    if (msg.stop_reason !== 'tool_use') break;
+
+    messages.push({ role: 'assistant', content: msg.content });
+    const toolResults = msg.content
+      .filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use')
+      .map(b => ({
+        type:        'tool_result' as const,
+        tool_use_id: b.id,
+        content:     'Search complete. Use the results to write accurate, sourced stories.',
+      }));
+    messages.push({ role: 'user', content: toolResults });
+  }
+
+  if (!msg) throw new Error('No response from API');
+
+  const fullText = msg.content
+    .map(b => b.type === 'text' ? (b as { type: 'text'; text: string }).text : '')
+    .filter(Boolean)
+    .join('\n');
+
+  if (!fullText) throw new Error(`No text block in response (stop_reason: ${msg.stop_reason})`);
+  console.log('[genPosts] raw:', fullText.slice(0, 400));
+  const posts = parseJSON<Tweet[]>(fullText);
   return posts.map(p => ({ ...p, char_count: p.text.length }));
 }
 
-async function genTip(trends: Article[], posts: Tweet[], client: Anthropic): Promise<string> {
+async function genTip(posts: Tweet[], client: Anthropic): Promise<string> {
+  const firstStory = posts.find(p => p.type === 'story')?.text.split('\n')[0] ?? 'story';
   const msg = await client.messages.create({
     model:      'claude-haiku-4-5-20251001',
     max_tokens: 150,
-    messages:   [{ role: 'user', content: `1-paragraph tip (max 60 words) for @UxGsol.\nTop story: ${trends[0]?.title ?? 'crypto'}\nBest time: ${posts[0]?.best_time ?? '14:00 UTC'}\nInclude: which post to publish first, exact time (UTC), one 30-min reply tactic.` }],
+    messages: [{
+      role: 'user',
+      content: `1-paragraph tip (max 60 words) for @UxGsol.\nToday's story: "${firstStory.slice(0, 80)}"\nBest time: ${posts[0]?.best_time ?? '14:00 UTC'}\nInclude: which post to publish first, exact time (UTC), one 30-min reply tactic.`,
+    }],
   });
   return (msg.content[0] as { type: 'text'; text: string }).text.trim();
 }
@@ -250,25 +328,29 @@ export async function POST(req: Request) {
   let performanceExamples: string[] = [];
   try {
     const body = await req.json() as { format_hint?: string; previous_topics?: string[]; performance_examples?: string[] };
-    formatHint          = typeof body.format_hint         === 'string' ? body.format_hint         : '';
-    previousTopics      = Array.isArray(body.previous_topics)          ? body.previous_topics     : [];
-    performanceExamples = Array.isArray(body.performance_examples)     ? body.performance_examples: [];
+    formatHint          = typeof body.format_hint         === 'string' ? body.format_hint          : '';
+    previousTopics      = Array.isArray(body.previous_topics)          ? body.previous_topics      : [];
+    performanceExamples = Array.isArray(body.performance_examples)     ? body.performance_examples : [];
   } catch { /* no body */ }
 
-  const client = new Anthropic({ apiKey });
+  const client = new Anthropic({
+    apiKey,
+    defaultHeaders: { 'anthropic-beta': 'web-search-2025-03-05' },
+  });
+  const context = getDailyContext();
 
   try {
-    const trends = await getTrends();
+    const trends     = await getTrends();
     const safeTrends = trends.length
       ? trends
       : [{ title: 'Bitcoin market analysis', url: '', source: 'Fallback', source_color: '#f97316', source_icon: '₿', time_ago: 'now', summary: '' }];
 
-    let posts = await genPosts(client, safeTrends, formatHint, previousTopics, performanceExamples);
+    let posts = await genPosts(client, safeTrends, context.storyCategory1, context.storyCategory2, formatHint, previousTopics, performanceExamples);
     if (posts.length < 3) {
-      posts = await genPosts(client, safeTrends, formatHint, previousTopics, performanceExamples);
+      posts = await genPosts(client, safeTrends, context.storyCategory1, context.storyCategory2, formatHint, previousTopics, performanceExamples);
     }
 
-    const tip = await genTip(safeTrends, posts, client);
+    const tip = await genTip(posts, client);
 
     return Response.json({
       date:         new Date().toISOString().split('T')[0],
