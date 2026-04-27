@@ -30,13 +30,13 @@ export async function POST(req: Request) {
     // ADIM 1: Web search ile güncel haberler bul
     const searchRes = await client.messages.create({
       model:      'claude-sonnet-4-5',
-      max_tokens: 800,
+      max_tokens: 400,
       tools:      [webSearchTool],
       messages: [{
         role:    'user',
-        content: 'Search for 2 shocking or absurd crypto/finance news stories from 2025 or 2026. For each story give me: title, 2-3 sentence summary, source URL, date.',
+        content: 'Search: "crypto hack scam unusual story April 2026". Return only 2 story summaries with source URL and date. Be brief.',
       }],
-    });
+    }, { signal: AbortSignal.timeout(20000) });
 
     const searchText = searchRes.content
       .filter(b => b.type === 'text')
@@ -50,12 +50,12 @@ export async function POST(req: Request) {
     // ADIM 2: Ayrı call ile JSON üret (tools YOK)
     const genRes = await client.messages.create({
       model:      'claude-sonnet-4-5',
-      max_tokens: 1500,
+      max_tokens: 1000,
       messages: [{
         role:    'user',
         content: `Here are today's news stories:\n${searchText || 'No search results — use your knowledge of recent 2025-2026 crypto events.'}\n\nNow write 3 social media posts for a crypto Twitter account (@UxGsol, 88K followers). Return ONLY a JSON array, no other text:\n[\n  {\n    "id": 1,\n    "type": "story",\n    "text": "Long story post in @0xSweep style, 200-250 words, paragraph by paragraph, shocking ending",\n    "source_url": "actual url here",\n    "source_name": "source name",\n    "source_date": "date",\n    "best_time": "14:00 UTC",\n    "reply_potential": "HIGH"\n  },\n  {\n    "id": 2,\n    "type": "story",\n    "text": "Second long story post, different topic, 200-250 words",\n    "source_url": "actual url here",\n    "source_name": "source name",\n    "source_date": "date",\n    "best_time": "16:00 UTC",\n    "reply_potential": "HIGH"\n  },\n  {\n    "id": 3,\n    "type": "influencer_voice",\n    "text": "Short funny crypto CT style post, all lowercase, relatable, ends with a question or hot take. Max 2 lines.",\n    "source_url": null,\n    "source_name": null,\n    "source_date": null,\n    "best_time": "12:00 UTC",\n    "reply_potential": "HIGH"\n  }\n]`,
       }],
-    });
+    }, { signal: AbortSignal.timeout(20000) });
 
     const raw   = genRes.content[0]?.type === 'text' ? (genRes.content[0] as { type: 'text'; text: string }).text : '[]';
     console.log('Generate raw response:', raw.substring(0, 500))
