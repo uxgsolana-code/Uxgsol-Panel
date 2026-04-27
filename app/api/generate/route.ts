@@ -110,23 +110,6 @@ function isRecent(a: Article): boolean {
   } catch { return true; }
 }
 
-function parseJSON<T>(raw: string): T {
-  let s = raw.trim();
-  if (s.startsWith('```')) s = s.split('\n').slice(1).join('\n').replace(/```[\s\S]*$/, '').trim();
-  const match = s.match(/\[[\s\S]*\]/);
-  if (match) s = match[0];
-  try {
-    return JSON.parse(s) as T;
-  } catch {
-    const partial = s.replace(/,?\s*\{[^}]*$/, '').replace(/,\s*$/, '') + ']';
-    try {
-      const result = JSON.parse(partial) as T;
-      if (Array.isArray(result) && result.length > 0) return result;
-    } catch { /* fall through */ }
-    throw new Error(`JSON parse failed — try again (raw length: ${s.length})`);
-  }
-}
-
 // ── Scraping ───────────────────────────────────────────────────────────────
 function parseRSS(xml: string, src: { name: string; color: string; icon: string }): Article[] {
   const items = xml.match(/<item[^>]*>[\s\S]*?<\/item>/g) ?? [];
@@ -183,42 +166,22 @@ async function getTrends(): Promise<Article[]> {
 // ── Prompt ─────────────────────────────────────────────────────────────────
 const SYSTEM_POSTS = `Return ONLY a JSON array. No text before or after. No markdown. No explanation.
 
-You have access to the web_search tool. BEFORE writing any Story post, search the web for real recent events.
-
-Suggested search queries (run before writing stories):
-- "crypto hack exploit 2026"
-- "DeFi protocol drained April 2026"
-- "memecoin rug pull creator 2026"
-- "crypto fraud arrested indicted 2025 2026"
-- "prediction market absurd bet 2026"
-- "crypto millionaire overnight 2025 2026"
-- "fintech startup collapse fraud 2025 2026"
-
-STRICT SOURCE RULES:
-- ONLY use events from 2025 or 2026
-- NEVER use Wikipedia or any encyclopedia
-- NEVER invent or hallucinate events — only write what you found in real search results
-- NEVER use events older than 12 months from today
-- source_url MUST be a real article URL from your search results
-- source_name is the publication (e.g. "CoinDesk", "Decrypt", "Reuters")
-- source_date is the event date (e.g. "Apr 15, 2026")
-
 Generate exactly 3 posts for @UxGsol (88K crypto followers) in this exact order:
 
 ═══ POST 1 — type "story" ═══
 Style: @0xSweep — real events, flowing prose, dry wit. No bullet points.
-Content: real story from the assigned category. Find a specific 2025-2026 event with real names, exact dollar amounts, and dates from your search.
+Content: use the real story provided from Category 1. Include real names, exact amounts, dates.
 Format: 200-250 words. Short paragraphs separated by blank lines (1-2 sentences each). Last sentence: twist or unexpected outcome.
-MUST provide: source_url, source_name, source_date.
+MUST provide: source_url (real article URL), source_name (publication), source_date (e.g. "Apr 15, 2026").
 
 ═══ POST 2 — type "story" ═══
 Style and format: identical to Post 1.
-Content: real story from the SECOND assigned category. Completely different topic from Post 1. Use web search.
+Content: use the real story provided from Category 2. Completely different topic from Post 1.
 MUST provide: source_url, source_name, source_date.
 
 ═══ POST 3 — type "influencer_voice" ═══
 Style: chronically online CT voice — all lowercase, CT slang, self-aware humor.
-Content: IGNORE news and search results entirely. Pick one universal crypto experience:
+Content: IGNORE the news stories above. Pick one universal crypto experience:
   BTC/ETH/SOL price psychology · bull/bear personality flips · airdrop/memecoin culture
   daily trader absurdities · "bro imagine" scenarios · CT character archetypes
 Format: max 2 lines, 1 emoji max as punchline, ends reply-worthy.
@@ -241,6 +204,32 @@ async function genPosts(
   prevTopics: string[],
   perfExamples: string[]
 ): Promise<Tweet[]> {
+
+  // ── STEP 1: Web search (separate call, no JSON output) ──────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const webSearchTool = { type: 'web_search_20250305', name: 'web_search' } as any;
+
+  const searchResponse = await client.messages.create({
+    model:      'claude-sonnet-4-20250514',
+    max_tokens: 500,
+    tools:      [webSearchTool],
+    messages: [{
+      role: 'user',
+      content: `Search for 2 recent (2025-2026) real crypto or finance stories that are shocking, absurd or unexpected.
+Category 1: ${storyCategory1}
+Category 2: ${storyCategory2}
+Return only a brief summary of each story with the source URL and date.`,
+    }],
+  });
+
+  const searchResults = searchResponse.content
+    .map(b => b.type === 'text' ? (b as { type: 'text'; text: string }).text : '')
+    .filter(Boolean)
+    .join('\n');
+
+  console.log('[genPosts] search results:', searchResults.slice(0, 300));
+
+  // ── STEP 2: JSON generation (no web search tool) ────────────────────────
   const trendsText = trends.slice(0, 6).map((t, i) => {
     const dateLabel = t.published_at
       ? (() => { try { return new Date(t.published_at!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return ''; } })()
@@ -252,49 +241,22 @@ async function genPosts(
   const avoidLine = prevTopics.length  ? `\nDo NOT repeat these recent story topics:\n${prevTopics.slice(0, 8).map(t => `- "${t}"`).join('\n')}` : '';
   const perfLine  = perfExamples.length ? `\nTop-performing posts (match this tone):\n${perfExamples.map(e => `"${e}"`).join('\n')}`             : '';
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const webSearchTool = { type: 'web_search_20250305', name: 'web_search' } as any;
+  const generateResponse = await client.messages.create({
+    model:      'claude-sonnet-4-20250514',
+    max_tokens: 1500,
+    system:     SYSTEM_POSTS,
+    messages: [{
+      role: 'user',
+      content: `Recent stories found (use these for Story 1 and Story 2):\n${searchResults || 'No search results — use your knowledge of recent 2025-2026 crypto events.'}\n\nToday's crypto context (for influencer voice post only):\n${trendsText}\n\nStory 1 category: ${storyCategory1}\nStory 2 category: ${storyCategory2}\n\nGenerate all 3 posts now.${hintLine}${avoidLine}${perfLine}`,
+    }],
+  });
 
-  const messages: Anthropic.Messages.MessageParam[] = [{
-    role: 'user',
-    content: `Today's crypto context (for influencer voice post only):\n${trendsText}\n\nStory 1 category: ${storyCategory1}\nStory 2 category: ${storyCategory2}\n\nSearch the web for recent (2025-2026) real events for each story category, then generate all 3 posts.${hintLine}${avoidLine}${perfLine}`,
-  }];
+  const raw   = generateResponse.content[0]?.type === 'text' ? (generateResponse.content[0] as { type: 'text'; text: string }).text : '';
+  const clean = raw.replace(/```json|```/g, '').trim();
+  const match = clean.match(/\[[\s\S]*\]/);
+  console.log('[genPosts] raw JSON:', raw.slice(0, 400));
 
-  let msg: Anthropic.Messages.Message | undefined;
-
-  // Tool-use loop — web_search_20250305 is Anthropic-hosted; typically resolves in 1-2 turns
-  for (let turn = 0; turn < 5; turn++) {
-    msg = await client.messages.create({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system:     SYSTEM_POSTS,
-      tools:      [webSearchTool],
-      messages,
-    });
-
-    if (msg.stop_reason !== 'tool_use') break;
-
-    messages.push({ role: 'assistant', content: msg.content });
-    const toolResults = msg.content
-      .filter((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use')
-      .map(b => ({
-        type:        'tool_result' as const,
-        tool_use_id: b.id,
-        content:     'Search complete. Use the results to write accurate, sourced stories.',
-      }));
-    messages.push({ role: 'user', content: toolResults });
-  }
-
-  if (!msg) throw new Error('No response from API');
-
-  const fullText = msg.content
-    .map(b => b.type === 'text' ? (b as { type: 'text'; text: string }).text : '')
-    .filter(Boolean)
-    .join('\n');
-
-  if (!fullText) throw new Error(`No text block in response (stop_reason: ${msg.stop_reason})`);
-  console.log('[genPosts] raw:', fullText.slice(0, 400));
-  const posts = parseJSON<Tweet[]>(fullText);
+  const posts = JSON.parse(match ? match[0] : clean) as Tweet[];
   return posts.map(p => ({ ...p, char_count: p.text.length }));
 }
 
