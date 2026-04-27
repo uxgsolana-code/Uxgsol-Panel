@@ -25,6 +25,8 @@ export async function POST(req: Request) {
   const client = makeClient();
 
   try {
+    console.log('Step 1: Starting search...')
+
     // ADIM 1: Web search ile güncel haberler bul
     const searchRes = await client.messages.create({
       model:      'claude-sonnet-4-5',
@@ -41,7 +43,9 @@ export async function POST(req: Request) {
       .map(b => (b as { type: 'text'; text: string }).text)
       .join('\n');
 
-    console.log('[search] result length:', searchText.length);
+    console.log('Search response type:', searchRes.stop_reason)
+    console.log('Search text length:', searchText.length)
+    console.log('Search text preview:', searchText.substring(0, 200))
 
     // ADIM 2: Ayrı call ile JSON üret (tools YOK)
     const genRes = await client.messages.create({
@@ -54,10 +58,10 @@ export async function POST(req: Request) {
     });
 
     const raw   = genRes.content[0]?.type === 'text' ? (genRes.content[0] as { type: 'text'; text: string }).text : '[]';
+    console.log('Generate raw response:', raw.substring(0, 500))
+
     const match = raw.match(/\[[\s\S]*\]/);
     if (!match) throw new Error(`No JSON array found in response (raw: ${raw.slice(0, 200)})`);
-
-    console.log('[gen] raw JSON start:', raw.slice(0, 200));
 
     const posts = JSON.parse(match[0]) as Array<{
       id: number;
@@ -94,6 +98,7 @@ export async function POST(req: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[POST] error:', message);
+    console.error('Full error:', JSON.stringify(err))
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
