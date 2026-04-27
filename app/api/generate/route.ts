@@ -210,7 +210,7 @@ async function genPosts(
   const webSearchTool = { type: 'web_search_20250305', name: 'web_search' } as any;
 
   const searchResponse = await client.messages.create({
-    model:      'claude-sonnet-4-20250514',
+    model:      'claude-sonnet-4-5',
     max_tokens: 500,
     tools:      [webSearchTool],
     messages: [{
@@ -242,7 +242,7 @@ Return only a brief summary of each story with the source URL and date.`,
   const perfLine  = perfExamples.length ? `\nTop-performing posts (match this tone):\n${perfExamples.map(e => `"${e}"`).join('\n')}`             : '';
 
   const generateResponse = await client.messages.create({
-    model:      'claude-sonnet-4-20250514',
+    model:      'claude-sonnet-4-5',
     max_tokens: 1500,
     system:     SYSTEM_POSTS,
     messages: [{
